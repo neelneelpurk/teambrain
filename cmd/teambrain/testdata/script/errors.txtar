@@ -1,0 +1,9 @@
+# Unknown command is a user error (exit 1) with a message on stderr.
+! exec teambrain frobnicate
+stderr 'Error:'
+
+# Invalid backend is a user error; under --json the envelope lands on stdout.
+env XDG_CONFIG_HOME=$WORK/cfg
+! exec teambrain --json --vault-backend sqlite doctor
+stdout '"ok": false'
+stdout '"code": 1'

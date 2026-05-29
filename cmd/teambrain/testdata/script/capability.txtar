@@ -1,0 +1,37 @@
+# Capability authoring + list reflects on-disk truth (no cache to desync).
+env XDG_CONFIG_HOME=$WORK/cfg
+cd $WORK/repo
+
+# Author a skill and an agent; list shows them.
+exec teambrain skill new daily-review --description 'Summarize the day'
+exists $WORK/repo/.claude/skills/daily-review/SKILL.md
+exec teambrain --json skill list
+stdout '"name": "daily-review"'
+stdout '"kind": "skill"'
+
+exec teambrain agent new researcher
+exists $WORK/repo/.claude/agents/researcher.md
+
+# Author a hook: writes the script, merges settings.json, records the manifest.
+exec teambrain hook new format-go --event PostToolUse --matcher 'Edit|Write'
+exists $WORK/repo/.claude/hooks/format-go.sh
+exists $WORK/repo/.claude/settings.json
+exists $WORK/repo/.claude/.teambrain.json
+grep 'PostToolUse' $WORK/repo/.claude/settings.json
+
+# list shows the hook with its event annotation.
+exec teambrain --json hook list
+stdout '"name": "format-go"'
+stdout '"event": "PostToolUse"'
+
+# Delete the script: list must no longer show it (filesystem is the truth).
+rm $WORK/repo/.claude/hooks/format-go.sh
+exec teambrain --json hook list
+! stdout '"name": "format-go"'
+
+# Dry-run new writes nothing.
+exec teambrain --dry-run skill new ghost
+stdout 'would create'
+! exists $WORK/repo/.claude/skills/ghost/SKILL.md
+
+-- repo/.keep --

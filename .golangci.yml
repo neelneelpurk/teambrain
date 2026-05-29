@@ -1,0 +1,70 @@
+# golangci-lint configuration (schema v2). Validated against v2.12.2.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - gocritic
+    - gosec
+    - misspell
+    - nakedret
+    - nolintlint
+    - predeclared
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+  settings:
+    errcheck:
+      # Writes to the user's stdout/stderr cannot be meaningfully recovered from
+      # in a CLI; checking every Fprint is noise, not safety.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gosec:
+      # teambrain is a file-over-app tool: reading and writing user-named paths
+      # with human-readable permissions is the whole point, so the path- and
+      # permission-related rules below are intentionally excluded.
+      excludes:
+        - G104 # duplicated by errcheck
+        - G204 # teambrain shells out to git and the Obsidian CLI by design, with controlled args
+        - G301 # 0755 directories are intended for vault folders
+        - G302 # file permissions are intentional
+        - G304 # file paths are user-supplied by design
+        - G306 # 0644 keeps vault files human-readable
+        - G703 # path-traversal taint: capability names are validated; vault paths are contained
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - unparam
+          - revive
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/neelneelpurk/teambrain

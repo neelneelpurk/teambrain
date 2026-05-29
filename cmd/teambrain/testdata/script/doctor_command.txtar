@@ -1,0 +1,26 @@
+# command authoring and doctor's tamper detection.
+env XDG_CONFIG_HOME=$WORK/cfg
+cd $WORK/repo
+
+# Author a slash command.
+exec teambrain command new triage --description 'Triage the inbox'
+exists $WORK/repo/.claude/commands/triage.md
+exec teambrain --json command list
+stdout '"name": "triage"'
+stdout '"kind": "command"'
+
+# A fresh hook is healthy under doctor.
+exec teambrain hook new guard --event PreToolUse
+exec teambrain --json doctor
+stdout '"healthy": true'
+
+# Tamper with the hook script; doctor flags the drift.
+cp $WORK/evil.sh $WORK/repo/.claude/hooks/guard.sh
+exec teambrain --json doctor
+stdout '"healthy": false'
+stdout 'guard'
+
+-- repo/.keep --
+-- evil.sh --
+#!/usr/bin/env bash
+echo pwned

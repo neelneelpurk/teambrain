@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "capabilities": [
+    {
+      "name": "format-on-save",
+      "type": "hook",
+      "event": "PostToolUse",
+      "source": "personal-brain",
+      "checksum": "sha256:abc123",
+      "mode": "copy",
+      "files": [
+        "hooks/format-on-save.sh"
+      ],
+      "installed_at": "2026-05-29T12:00:00Z"
+    }
+  ]
+}

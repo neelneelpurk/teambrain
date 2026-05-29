@@ -1,0 +1,10 @@
+---
+title: My Note
+tags:
+  - alpha
+  - beta
+status: draft
+---
+# Heading
+
+Body text with a [[link]].

@@ -1,0 +1,21 @@
+# Build output
+/dist/
+/bin/
+/teambrain
+/teambrain.exe
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go
+vendor/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# The PRD lives outside version control; it is a working input, not source.
+/teambrain-PRD.md

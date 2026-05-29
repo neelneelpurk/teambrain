@@ -1,0 +1,12 @@
+# doctor under --json emits a success envelope with the resolved backend.
+env XDG_CONFIG_HOME=$WORK/cfg
+env TEAMBRAIN_VAULT_BACKEND=auto
+exec teambrain --json doctor
+stdout '"ok": true'
+stdout '"command": "doctor"'
+stdout '"vault_backend": "auto"'
+! stderr .
+
+# Human mode prints a readable line, not JSON.
+exec teambrain doctor
+stdout 'vault backend: auto'

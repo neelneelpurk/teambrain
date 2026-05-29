@@ -1,0 +1,7 @@
+# --help prints usage, the tool name, and the flags section.
+exec teambrain --help
+stdout 'teambrain'
+stdout 'Usage:'
+stdout 'Flags:'
+stdout 'doctor'
+! stderr .

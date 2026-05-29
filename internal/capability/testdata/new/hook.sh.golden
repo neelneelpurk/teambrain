@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# format-go — teambrain hook for the PostToolUse event.
+# The hook payload arrives as JSON on stdin; see the Claude Code hooks docs.
+set -euo pipefail
+
+# TODO: implement. Exit non-zero to block where the event supports it.
+exit 0

@@ -1,0 +1,42 @@
+# Full promotion workflow: create-sync → view-sync (link gate) → commit-sync.
+[!exec:git] skip 'git not installed'
+env XDG_CONFIG_HOME=$WORK/cfg
+
+# Personal vault.
+exec teambrain init $WORK/personal
+
+# Team vault as a real git repo.
+exec teambrain init $WORK/team
+exec git -C $WORK/team init
+exec git -C $WORK/team config user.email t@example.com
+exec git -C $WORK/team config user.name T
+exec git -C $WORK/team config commit.gpgsign false
+exec git -C $WORK/team add -A
+exec git -C $WORK/team commit -m init
+
+# Bind the team vault into the personal vault's manifest.
+exec teambrain team bind $WORK/team --vault $WORK/personal
+
+# Author a note that links to a personal-only note (should be flagged).
+cp linker.md $WORK/personal/projects/linker.md
+
+exec teambrain create-sync projects/linker.md:adrs/0001.md --vault $WORK/personal
+exists $WORK/personal/_sync/adrs/0001.md
+
+# view-sync flags the dangling link.
+exec teambrain --json view-sync --vault $WORK/personal
+stdout '"link_issues"'
+stdout 'private-thoughts'
+
+# commit-sync promotes it into the team vault and commits only that file.
+exec teambrain commit-sync --vault $WORK/personal
+exists $WORK/team/adrs/0001.md
+! exists $WORK/personal/_sync/adrs/0001.md
+exec git -C $WORK/team log --name-only -1
+stdout 'adrs/0001.md'
+
+-- linker.md --
+---
+title: Linker
+---
+see [[private-thoughts]] and [[conventions/style]]

@@ -1,0 +1,39 @@
+# init scaffolds a personal vault, is idempotent, and supports --dry-run.
+env XDG_CONFIG_HOME=$WORK/cfg
+
+# Requires a path or --here.
+! exec teambrain init
+stderr 'specify a vault path'
+
+# Create a vault at a path.
+exec teambrain --json init $WORK/brain
+stdout '"ok": true'
+stdout '"command": "init"'
+exists $WORK/brain/CLAUDE.md
+exists $WORK/brain/.teambrain.json
+exists $WORK/brain/.claude/.teambrain.json
+exists $WORK/brain/.claude/skills/create-teambrain-skill/SKILL.md
+exists $WORK/brain/.claude/skills/create-teambrain-agent/SKILL.md
+exists $WORK/brain/.claude/skills/create-teambrain-hook/SKILL.md
+exists $WORK/brain/inbox/.gitkeep
+
+# The root manifest declares a personal vault.
+grep '"vault": "personal"' $WORK/brain/.teambrain.json
+
+# Re-init is a no-op: nothing created the second time.
+exec teambrain --json init $WORK/brain
+stdout '"existing":'
+stdout '"created": \[\]'
+
+# --here initializes the current directory.
+mkdir $WORK/here
+cd $WORK/here
+exec teambrain init --here
+stdout 'personal-brain vault'
+exists $WORK/here/CLAUDE.md
+cd $WORK
+
+# --dry-run on a fresh dir writes nothing.
+exec teambrain --dry-run init $WORK/dry
+stdout 'would create'
+! exists $WORK/dry/CLAUDE.md

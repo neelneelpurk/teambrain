@@ -1,0 +1,11 @@
+---
+title: Referencing note
+---
+# Links
+
+A normal link: [[archive/old-project]].
+With alias: [[archive/old-project|Old Project]].
+With heading: [[archive/old-project#Goals]].
+An embed (unsupported): ![[projects/old]].
+A block ref (unsupported): [[projects/old#^block1]].
+An unrelated link: [[areas/health]].

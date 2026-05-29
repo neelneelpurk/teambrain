@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "vault": "personal",
+  "team": {
+    "path": "/home/u/team-brain",
+    "remote": "git@github.com:org/team-brain.git",
+    "bound_at": "2026-05-29T12:00:00Z"
+  }
+}

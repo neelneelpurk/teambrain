@@ -1,0 +1,8 @@
+---
+name: researcher
+description: Investigate open questions across the vault.
+---
+
+You are the researcher subagent.
+
+TODO: write the system prompt — responsibilities, constraints, and output format.

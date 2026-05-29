@@ -1,0 +1,4 @@
+# --version prints the tool name and the injected version, nothing on stderr.
+exec teambrain --version
+stdout 'teambrain 0\.0\.0-test'
+! stderr .

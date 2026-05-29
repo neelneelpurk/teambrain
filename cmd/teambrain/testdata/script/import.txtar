@@ -1,0 +1,36 @@
+# Import capabilities from a vault into a code repo, then uninstall cleanly.
+env XDG_CONFIG_HOME=$WORK/cfg
+
+# Build a source vault with a skill and a hook.
+exec teambrain init $WORK/vault
+exec teambrain skill new shared --description 'A shared skill' --dir $WORK/vault
+exec teambrain hook new guard --event PreToolUse --matcher Bash --dir $WORK/vault
+
+# Import the skill into a code repo (copy mode).
+mkdir $WORK/repo
+exec teambrain --json skill import shared --source $WORK/vault --dir $WORK/repo
+stdout '"changed": true'
+exists $WORK/repo/.claude/skills/shared/SKILL.md
+exists $WORK/repo/.claude/.teambrain.json
+
+# Import the hook with --yes (skips the confirmation prompt) and assert settings.
+exec teambrain hook import guard --source $WORK/vault --dir $WORK/repo --yes
+exists $WORK/repo/.claude/hooks/guard.sh
+grep 'PreToolUse' $WORK/repo/.claude/settings.json
+
+# A foreign file in the repo must be left untouched by uninstall.
+mkdir $WORK/repo/.claude/skills/mine
+cp $WORK/vault/.claude/skills/shared/SKILL.md $WORK/repo/.claude/skills/mine/SKILL.md
+
+# Uninstall the imported skill (with --yes); foreign file survives.
+exec teambrain skill uninstall shared --dir $WORK/repo --yes
+! exists $WORK/repo/.claude/skills/shared/SKILL.md
+exists $WORK/repo/.claude/skills/mine/SKILL.md
+
+# Uninstalling something not owned is an error.
+! exec teambrain skill uninstall mine --dir $WORK/repo --yes
+stderr 'not a teambrain-owned'
+
+# Import without a source is a user error.
+! exec teambrain skill import shared --dir $WORK/repo
+stderr 'no import sources'
