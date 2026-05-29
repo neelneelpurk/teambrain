@@ -9,8 +9,7 @@ import (
 
 func TestIsRemote(t *testing.T) {
 	t.Parallel()
-	remotes := []string{"git@github.com:org/team.git", "https://github.com/org/team.git", "ssh://host/repo"}
-	for _, r := range remotes {
+	for _, r := range []string{"git@github.com:org/team.git", "https://github.com/org/team.git", "ssh://host/repo"} {
 		if !IsRemote(r) {
 			t.Errorf("IsRemote(%q) = false, want true", r)
 		}
@@ -22,74 +21,100 @@ func TestIsRemote(t *testing.T) {
 	}
 }
 
-func TestBindingPathIsAbsolute(t *testing.T) {
+func TestDeriveName(t *testing.T) {
 	t.Parallel()
-	b, err := Binding("relative/team", "2026-05-29T00:00:00Z")
-	if err != nil {
-		t.Fatal(err)
+	cases := map[string]string{
+		"/home/u/team-alpha":               "team-alpha",
+		"git@github.com:org/team-beta.git": "team-beta",
+		"https://github.com/org/gamma.git": "gamma",
+		"./relative/delta":                 "delta",
 	}
-	if !filepath.IsAbs(b.Path) {
-		t.Fatalf("path binding should be absolute, got %q", b.Path)
-	}
-	if b.Remote != "" {
-		t.Fatalf("path binding should not set remote: %q", b.Remote)
+	for in, want := range cases {
+		if got := DeriveName(in); got != want {
+			t.Errorf("DeriveName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
-func TestBindForceGuard(t *testing.T) {
+func TestBindManyTeamsCoexist(t *testing.T) {
 	t.Parallel()
 	root := manifest.NewRoot(manifest.RolePersonal)
 
-	// First bind succeeds.
-	if err := Bind(root, "/teams/alpha", "t0", false); err != nil {
-		t.Fatalf("first bind: %v", err)
+	if err := Bind(root, "alpha", "/teams/alpha", "t0", false); err != nil {
+		t.Fatal(err)
 	}
-	if !root.IsBound() || root.Team.Path != "/teams/alpha" {
-		t.Fatalf("binding not recorded: %+v", root.Team)
+	if err := Bind(root, "beta", "git@github.com:org/beta.git", "t0", false); err != nil {
+		t.Fatal(err)
 	}
+	if len(root.Teams) != 2 {
+		t.Fatalf("expected two coexisting teams, got %d", len(root.Teams))
+	}
+	if a, ok := root.Team("alpha"); !ok || !filepath.IsAbs(a.Path) {
+		t.Fatalf("alpha path should be absolute: %+v", a)
+	}
+	if b, _ := root.Team("beta"); b.Remote != "git@github.com:org/beta.git" {
+		t.Fatalf("beta remote wrong: %+v", b)
+	}
+}
 
-	// Rebinding to the SAME target is idempotent (no force needed).
-	if err := Bind(root, "/teams/alpha", "t1", false); err != nil {
+func TestBindForceGuardPerName(t *testing.T) {
+	t.Parallel()
+	root := manifest.NewRoot(manifest.RolePersonal)
+	if err := Bind(root, "alpha", "/teams/alpha", "t0", false); err != nil {
+		t.Fatal(err)
+	}
+	// Same name, same target -> idempotent.
+	if err := Bind(root, "alpha", "/teams/alpha", "t1", false); err != nil {
 		t.Fatalf("idempotent rebind should succeed: %v", err)
 	}
-
-	// Rebinding to a DIFFERENT target without force is refused.
-	if err := Bind(root, "/teams/beta", "t2", false); err == nil {
-		t.Fatal("rebinding to a different team without --force should fail")
+	// Same name, different target, no force -> refused.
+	if err := Bind(root, "alpha", "/teams/other", "t2", false); err == nil {
+		t.Fatal("rebinding a name to a different target without --force should fail")
 	}
-	if root.Team.Path != "/teams/alpha" {
-		t.Fatalf("refused rebind must not change the binding, got %q", root.Team.Path)
+	if a, _ := root.Team("alpha"); a.Path != "/teams/alpha" {
+		t.Fatalf("refused rebind must not change the target, got %q", a.Path)
 	}
-
-	// With force, it rebinds.
-	if err := Bind(root, "/teams/beta", "t3", true); err != nil {
+	// With force -> rebinds.
+	if err := Bind(root, "alpha", "/teams/other", "t3", true); err != nil {
 		t.Fatalf("forced rebind: %v", err)
 	}
-	if root.Team.Path != "/teams/beta" {
-		t.Fatalf("forced rebind did not take: %+v", root.Team)
+	if a, _ := root.Team("alpha"); a.Path != "/teams/other" {
+		t.Fatalf("forced rebind did not take: %+v", a)
 	}
 }
 
-func TestBindRemote(t *testing.T) {
+func TestUnbind(t *testing.T) {
 	t.Parallel()
 	root := manifest.NewRoot(manifest.RolePersonal)
-	if err := Bind(root, "git@github.com:org/team.git", "t0", false); err != nil {
-		t.Fatal(err)
+	_ = Bind(root, "alpha", "/teams/alpha", "t0", false)
+	if err := Unbind(root, "alpha"); err != nil {
+		t.Fatalf("Unbind: %v", err)
 	}
-	if root.Team.Remote != "git@github.com:org/team.git" || root.Team.Path != "" {
-		t.Fatalf("remote binding wrong: %+v", root.Team)
+	if root.IsBound() {
+		t.Fatal("root should be unbound after removing the only team")
+	}
+	if err := Unbind(root, "alpha"); err == nil {
+		t.Fatal("unbinding a missing team should error")
+	}
+}
+
+func TestBindRequiresName(t *testing.T) {
+	t.Parallel()
+	root := manifest.NewRoot(manifest.RolePersonal)
+	if err := Bind(root, "", "/teams/x", "t0", false); err == nil {
+		t.Fatal("empty team name should be rejected")
 	}
 }
 
 func TestDescribe(t *testing.T) {
 	t.Parallel()
-	if Describe(nil) != "none" {
-		t.Error("nil binding should describe as none")
+	if Describe(manifest.TeamBinding{Name: "n"}) != "n" {
+		t.Error("nameless target should fall back to name")
 	}
-	if Describe(&manifest.TeamBinding{Path: "/p"}) != "/p" {
+	if Describe(manifest.TeamBinding{Path: "/p"}) != "/p" {
 		t.Error("path describe")
 	}
-	if Describe(&manifest.TeamBinding{Remote: "r"}) != "r" {
+	if Describe(manifest.TeamBinding{Remote: "r"}) != "r" {
 		t.Error("remote describe")
 	}
 }

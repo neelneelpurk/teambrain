@@ -16,9 +16,15 @@ type FakeVault struct {
 	files map[string][]byte
 }
 
-// NewFakeVault returns an empty in-memory vault.
+// NewFakeVault returns an empty in-memory vault with a default root.
 func NewFakeVault() *FakeVault {
-	return &FakeVault{root: "/fake-vault", files: make(map[string][]byte)}
+	return NewFakeVaultAt("/fake-vault")
+}
+
+// NewFakeVaultAt returns an empty in-memory vault with the given root, so tests
+// that juggle several vaults can distinguish them by Root().
+func NewFakeVaultAt(root string) *FakeVault {
+	return &FakeVault{root: root, files: make(map[string][]byte)}
 }
 
 // Backend identifies this implementation.

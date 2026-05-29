@@ -129,7 +129,7 @@ func TestPersonalVaultIdempotentAndRepairs(t *testing.T) {
 
 	// Re-init preserves a user-set team binding (must not clobber the manifest).
 	root, _ := manifest.LoadRoot(v.Root())
-	root.Team = &manifest.TeamBinding{Path: "/somewhere/team"}
+	root.UpsertTeam(manifest.TeamBinding{Name: "team", Path: "/somewhere/team"})
 	if err := manifest.SaveRoot(v.Root(), root); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestPersonalVaultIdempotentAndRepairs(t *testing.T) {
 
 	// Binding survived the repair.
 	root, _ = manifest.LoadRoot(v.Root())
-	if !root.IsBound() || root.Team.Path != "/somewhere/team" {
-		t.Fatalf("re-init clobbered the team binding: %+v", root.Team)
+	if b, ok := root.Team("team"); !ok || b.Path != "/somewhere/team" {
+		t.Fatalf("re-init clobbered the team binding: %+v", root.Teams)
 	}
 }

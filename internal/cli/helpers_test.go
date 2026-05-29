@@ -110,20 +110,6 @@ func TestIndent(t *testing.T) {
 	}
 }
 
-func TestParseSpecs(t *testing.T) {
-	t.Parallel()
-	specs := parseSpecs([]string{"a.md", "src.md:dest.md"})
-	if len(specs) != 2 {
-		t.Fatalf("len = %d", len(specs))
-	}
-	if specs[0].Src != "a.md" || specs[0].Dest != "" {
-		t.Errorf("spec0 = %+v", specs[0])
-	}
-	if specs[1].Src != "src.md" || specs[1].Dest != "dest.md" {
-		t.Errorf("spec1 = %+v", specs[1])
-	}
-}
-
 func TestResolvePersonalVault(t *testing.T) {
 	t.Parallel()
 	app := &App{Config: &Config{}}
@@ -168,19 +154,21 @@ func TestViewSyncHumanWithDiff(t *testing.T) {
 	base := t.TempDir()
 	personal := filepath.Join(base, "personal")
 	team := filepath.Join(base, "team")
-	for _, args := range [][]string{{"init", personal}, {"team", "init", team}, {"team", "bind", team, "--vault", personal}} {
+	for _, args := range [][]string{{"init", personal}, {"team", "init", team}, {"team", "bind", team, "--name", "eng", "--vault", personal}} {
 		if code, _, e := runRoot(t, args...); code != 0 {
 			t.Fatalf("setup %v: %s", args, e.String())
 		}
 	}
-	// Existing team note + a modified personal version → produces a diff.
+	// Existing team note + a modified, tagged personal version at the same path
+	// (via teambrain_dest) → produces a diff.
 	if err := os.WriteFile(filepath.Join(team, "adrs", "x.md"), []byte("one\ntwo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(personal, "projects", "x.md"), []byte("one\ntwo CHANGED\n"), 0o644); err != nil {
+	note := "---\nteambrains: [eng]\nteambrain_dest: adrs/x.md\n---\none\ntwo CHANGED\n"
+	if err := os.WriteFile(filepath.Join(personal, "projects", "x.md"), []byte(note), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, e := runRoot(t, "create-sync", "projects/x.md:adrs/x.md", "--vault", personal); code != 0 {
+	if code, _, e := runRoot(t, "create-sync", "projects/x.md", "--vault", personal); code != 0 {
 		t.Fatalf("create-sync: %s", e.String())
 	}
 	code, stdout, _ := runRoot(t, "view-sync", "--vault", personal)

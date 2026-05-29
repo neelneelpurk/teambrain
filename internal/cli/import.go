@@ -164,8 +164,12 @@ func resolveSources(app *App, sourceFlags []string) ([]capability.Source, error)
 
 	if pv := app.Config.PersonalVault; pv != "" {
 		add("personal", pv)
-		if root, err := manifest.LoadRoot(pv); err == nil && root.IsBound() && root.Team.Path != "" {
-			add("team", root.Team.Path)
+		if root, err := manifest.LoadRoot(pv); err == nil {
+			for _, b := range root.Teams {
+				if b.Path != "" {
+					add(b.Name, b.Path)
+				}
+			}
 		}
 	}
 	for _, src := range sourceFlags {

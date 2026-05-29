@@ -61,11 +61,12 @@ func TestTeamBindForceGuardViaCLI(t *testing.T) {
 		t.Fatalf("init: %s", e.String())
 	}
 
-	if code, _, _ := runRoot(t, "team", "bind", "/teams/alpha", "--vault", personal); code != 0 {
+	// Bind a named team.
+	if code, _, _ := runRoot(t, "team", "bind", "/teams/alpha", "--name", "x", "--vault", personal); code != 0 {
 		t.Fatal("first bind should succeed")
 	}
-	// Rebinding to a different team without --force is refused.
-	code, _, stderr := runRoot(t, "team", "bind", "/teams/beta", "--vault", personal)
+	// Rebinding the SAME name to a different target without --force is refused.
+	code, _, stderr := runRoot(t, "team", "bind", "/teams/beta", "--name", "x", "--vault", personal)
 	if code != 1 {
 		t.Fatalf("rebind exit=%d, want 1", code)
 	}
@@ -73,12 +74,21 @@ func TestTeamBindForceGuardViaCLI(t *testing.T) {
 		t.Fatalf("stderr=%q", stderr.String())
 	}
 	// With --force it succeeds.
-	if code, _, _ := runRoot(t, "team", "bind", "/teams/beta", "--vault", personal, "--force"); code != 0 {
+	if code, _, _ := runRoot(t, "team", "bind", "/teams/beta", "--name", "x", "--vault", personal, "--force"); code != 0 {
 		t.Fatal("forced rebind should succeed")
 	}
 	root, _ := manifest.LoadRoot(personal)
-	if root.Team.Path != "/teams/beta" {
-		t.Fatalf("binding = %q, want /teams/beta", root.Team.Path)
+	if b, _ := root.Team("x"); b.Path != "/teams/beta" {
+		t.Fatalf("binding = %q, want /teams/beta", b.Path)
+	}
+
+	// A DIFFERENT name coexists (1:n) without --force.
+	if code, _, _ := runRoot(t, "team", "bind", "/teams/gamma", "--name", "y", "--vault", personal); code != 0 {
+		t.Fatal("binding a second, differently-named team should succeed")
+	}
+	root, _ = manifest.LoadRoot(personal)
+	if len(root.Teams) != 2 {
+		t.Fatalf("expected 2 coexisting teams, got %d", len(root.Teams))
 	}
 }
 
@@ -91,7 +101,7 @@ func TestTeamStatusUnbound(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
 	}
-	if !strings.Contains(stdout.String(), "no team vault bound") {
+	if !strings.Contains(stdout.String(), "no team vaults bound") {
 		t.Fatalf("output=%q", stdout.String())
 	}
 }
@@ -100,22 +110,22 @@ func TestSyncCommandsViaCLI(t *testing.T) {
 	base := t.TempDir()
 	personal := filepath.Join(base, "personal")
 	team := filepath.Join(base, "team")
-	for _, args := range [][]string{{"init", personal}, {"team", "init", team}, {"team", "bind", team, "--vault", personal}} {
+	for _, args := range [][]string{{"init", personal}, {"team", "init", team}, {"team", "bind", team, "--name", "eng", "--vault", personal}} {
 		if code, _, e := runRoot(t, args...); code != 0 {
 			t.Fatalf("setup %v: %s", args, e.String())
 		}
 	}
-	// A note linking to a personal-only note.
-	note := "---\ntitle: N\n---\nsee [[private]] and [[adrs/other]]\n"
+	// A note tagged for team "eng" that links to a personal-only note.
+	note := "---\ntitle: N\nteambrains: [eng]\n---\nsee [[private]] and [[adrs/other]]\n"
 	if err := os.WriteFile(filepath.Join(personal, "projects", "n.md"), []byte(note), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if code, _, e := runRoot(t, "create-sync", "projects/n.md:adrs/n.md", "--vault", personal); code != 0 {
+	if code, _, e := runRoot(t, "create-sync", "projects/n.md", "--vault", personal); code != 0 {
 		t.Fatalf("create-sync: %s", e.String())
 	}
-	if _, err := os.Stat(filepath.Join(personal, "_sync", "adrs", "n.md")); err != nil {
-		t.Fatalf("not staged: %v", err)
+	if _, err := os.Stat(filepath.Join(personal, "_sync", "eng", "projects", "n.md")); err != nil {
+		t.Fatalf("not staged under _sync/eng: %v", err)
 	}
 
 	code, stdout, _ := runRoot(t, "--json", "view-sync", "--vault", personal)

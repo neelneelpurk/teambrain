@@ -88,6 +88,41 @@ func TestParseDocumentNoFrontmatter(t *testing.T) {
 	}
 }
 
+func TestGetListAndRemove(t *testing.T) {
+	t.Parallel()
+
+	const note = "---\ntitle: N\nteambrains:\n  - alpha\n  - beta\nteam_single: gamma\n---\nbody\n"
+	doc, err := ParseDocument([]byte(note))
+	if err != nil {
+		t.Fatalf("ParseDocument: %v", err)
+	}
+
+	got := doc.GetList("teambrains")
+	if len(got) != 2 || got[0] != "alpha" || got[1] != "beta" {
+		t.Fatalf("GetList(teambrains) = %v, want [alpha beta]", got)
+	}
+	// A scalar value yields a single-element list.
+	if got := doc.GetList("team_single"); len(got) != 1 || got[0] != "gamma" {
+		t.Fatalf("GetList(team_single) = %v, want [gamma]", got)
+	}
+	// Absent key -> nil.
+	if got := doc.GetList("nope"); got != nil {
+		t.Fatalf("GetList(nope) = %v, want nil", got)
+	}
+
+	// Remove drops the key; render no longer contains it.
+	if !doc.Remove("teambrains") || doc.Remove("teambrains") {
+		t.Fatal("Remove should report true then false")
+	}
+	out, _ := doc.Render()
+	if strings.Contains(string(out), "teambrains") {
+		t.Fatalf("Remove did not drop the key:\n%s", out)
+	}
+	if !strings.Contains(string(out), "team_single") {
+		t.Fatalf("Remove dropped an unrelated key:\n%s", out)
+	}
+}
+
 func TestSetPreservesOrderAndBody(t *testing.T) {
 	t.Parallel()
 

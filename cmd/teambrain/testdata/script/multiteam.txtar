@@ -1,0 +1,54 @@
+# 1:n — one personal vault, two team brains; a note tagged for both fans out to
+# each, discovered by a whole-vault scan.
+[!exec:git] skip 'git not installed'
+env XDG_CONFIG_HOME=$WORK/cfg
+
+exec teambrain init $WORK/personal
+
+# Two team vaults, each a git repo.
+exec teambrain team init $WORK/eng
+exec git -C $WORK/eng init
+exec git -C $WORK/eng config user.email t@example.com
+exec git -C $WORK/eng config user.name T
+exec git -C $WORK/eng config commit.gpgsign false
+exec git -C $WORK/eng add -A
+exec git -C $WORK/eng commit -m init
+
+exec teambrain team init $WORK/design
+exec git -C $WORK/design init
+exec git -C $WORK/design config user.email t@example.com
+exec git -C $WORK/design config user.name T
+exec git -C $WORK/design config commit.gpgsign false
+exec git -C $WORK/design add -A
+exec git -C $WORK/design commit -m init
+
+# Bind both (1:n) — distinct names coexist with no --force.
+exec teambrain team bind $WORK/eng --name eng --vault $WORK/personal
+exec teambrain team bind $WORK/design --name design --vault $WORK/personal
+exec teambrain --json team status --vault $WORK/personal
+stdout '"name": "eng"'
+stdout '"name": "design"'
+
+# One note tagged for BOTH teams.
+cp shared.md $WORK/personal/projects/shared.md
+
+# Scan the whole vault (no paths) — stages to both teams.
+exec teambrain create-sync --vault $WORK/personal
+exists $WORK/personal/_sync/eng/projects/shared.md
+exists $WORK/personal/_sync/design/projects/shared.md
+
+# Commit fans out to both team repos.
+exec teambrain commit-sync --vault $WORK/personal
+exists $WORK/eng/projects/shared.md
+exists $WORK/design/projects/shared.md
+exec git -C $WORK/eng log --name-only -1
+stdout 'projects/shared.md'
+exec git -C $WORK/design log --name-only -1
+stdout 'projects/shared.md'
+
+-- shared.md --
+---
+title: Shared decision
+teambrains: [eng, design]
+---
+A decision both teams care about.

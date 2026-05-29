@@ -19,15 +19,15 @@ import (
 func newTeamCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "team",
-		Short: "Create, bind, and inspect the team vault (1:1)",
+		Short: "Create, bind, and inspect team vaults (1:n)",
 		Args:  cobra.NoArgs,
 	}
-	cmd.AddCommand(newTeamInitCommand(), newTeamBindCommand(), newTeamStatusCommand())
+	cmd.AddCommand(newTeamInitCommand(), newTeamBindCommand(), newTeamUnbindCommand(), newTeamStatusCommand())
 	return cmd
 }
 
 func newTeamInitCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "init <path>",
 		Short: "Scaffold a team-brain vault",
 		Args:  cobra.ExactArgs(1),
@@ -51,31 +51,35 @@ func newTeamInitCommand() *cobra.Command {
 			})
 		},
 	}
-	return cmd
 }
 
 func newTeamBindCommand() *cobra.Command {
-	var vaultFlag string
+	var vaultFlag, name string
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "bind <path|remote>",
-		Short: "Bind this personal vault to its one team vault",
-		Args:  cobra.ExactArgs(1),
+		Short: "Bind this personal vault to a (named) team vault",
+		Long: `Register a team vault under a name. A personal vault may bind to several
+teams (1:n); notes route to one or more of them via their teambrains: frontmatter
+property. The name defaults to the target's final path segment (or repo name);
+override it with --name. Rebinding an existing name to a different target needs
+--force.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := appFrom(cmd.Context())
 			personalPath, err := resolvePersonalVault(app, vaultFlag)
 			if err != nil {
 				return err
 			}
-			root, err := manifest.LoadRoot(personalPath)
+			root, err := loadPersonalRoot(personalPath)
 			if err != nil {
-				if os.IsNotExist(err) {
-					return exit.Preconditionf("%s is not a teambrain vault", personalPath).
-						WithHint("run `teambrain init` there first")
-				}
 				return err
 			}
-			if err := team.Bind(root, args[0], time.Now().UTC().Format(time.RFC3339), force); err != nil {
+			teamName := name
+			if teamName == "" {
+				teamName = team.DeriveName(args[0])
+			}
+			if err := team.Bind(root, teamName, args[0], time.Now().UTC().Format(time.RFC3339), force); err != nil {
 				return err
 			}
 			if !app.Config.DryRun {
@@ -83,21 +87,65 @@ func newTeamBindCommand() *cobra.Command {
 					return err
 				}
 			}
-			return app.Emit("team.bind", root.Team, func(w io.Writer) {
-				fmt.Fprintf(w, "bound team vault: %s\n", team.Describe(root.Team))
+			bound, _ := root.Team(teamName)
+			return app.Emit("team.bind", bound, func(w io.Writer) {
+				fmt.Fprintf(w, "bound team %q -> %s\n", teamName, team.Describe(bound))
 			})
 		},
 	}
 	cmd.Flags().StringVar(&vaultFlag, "vault", "", "personal vault path (default: current directory)")
-	cmd.Flags().BoolVar(&force, "force", false, "rebind even if a different team is already bound")
+	cmd.Flags().StringVar(&name, "name", "", "team name notes reference in teambrains: (default: derived from the target)")
+	cmd.Flags().BoolVar(&force, "force", false, "rebind the name even if it points elsewhere")
 	return cmd
+}
+
+func newTeamUnbindCommand() *cobra.Command {
+	var vaultFlag string
+	cmd := &cobra.Command{
+		Use:   "unbind <name>",
+		Short: "Remove a team binding by name",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := appFrom(cmd.Context())
+			personalPath, err := resolvePersonalVault(app, vaultFlag)
+			if err != nil {
+				return err
+			}
+			root, err := loadPersonalRoot(personalPath)
+			if err != nil {
+				return err
+			}
+			if err := team.Unbind(root, args[0]); err != nil {
+				return err
+			}
+			if !app.Config.DryRun {
+				if err := manifest.SaveRoot(personalPath, root); err != nil {
+					return err
+				}
+			}
+			return app.Emit("team.unbind", map[string]any{"name": args[0]}, func(w io.Writer) {
+				fmt.Fprintf(w, "unbound team %q\n", args[0])
+			})
+		},
+	}
+	cmd.Flags().StringVar(&vaultFlag, "vault", "", "personal vault path (default: current directory)")
+	return cmd
+}
+
+type teamStatus struct {
+	Name      string `json:"name"`
+	Path      string `json:"path,omitempty"`
+	Remote    string `json:"remote,omitempty"`
+	Exists    bool   `json:"exists"`
+	IsGitRepo bool   `json:"is_git_repo"`
+	BoundAt   string `json:"bound_at,omitempty"`
 }
 
 func newTeamStatusCommand() *cobra.Command {
 	var vaultFlag string
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Report the team binding and the team vault's git state",
+		Short: "List bound team vaults and their git state",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := appFrom(cmd.Context())
@@ -105,48 +153,60 @@ func newTeamStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			root, err := manifest.LoadRoot(personalPath)
+			root, err := loadPersonalRoot(personalPath)
 			if err != nil {
-				if os.IsNotExist(err) {
-					return exit.Preconditionf("%s is not a teambrain vault", personalPath).
-						WithHint("run `teambrain init` there first")
-				}
 				return err
 			}
 
-			status := map[string]any{
-				"vault": personalPath,
-				"bound": root.IsBound(),
-			}
-			if root.IsBound() {
-				teamInfo := map[string]any{
-					"path":     root.Team.Path,
-					"remote":   root.Team.Remote,
-					"bound_at": root.Team.BoundAt,
+			g := git.NewShell()
+			teams := make([]teamStatus, 0, len(root.Teams))
+			for _, b := range root.Teams {
+				st := teamStatus{Name: b.Name, Path: b.Path, Remote: b.Remote, BoundAt: b.BoundAt}
+				if b.Path != "" {
+					_, statErr := os.Stat(b.Path)
+					st.Exists = statErr == nil
+					st.IsGitRepo = g.IsRepo(b.Path)
 				}
-				if root.Team.Path != "" {
-					_, statErr := os.Stat(root.Team.Path)
-					teamInfo["exists"] = statErr == nil
-					teamInfo["is_git_repo"] = git.NewShell().IsRepo(root.Team.Path)
-				}
-				status["team"] = teamInfo
+				teams = append(teams, st)
 			}
 
-			return app.Emit("team.status", status, func(w io.Writer) {
-				if !root.IsBound() {
-					fmt.Fprintln(w, "no team vault bound")
-					fmt.Fprintln(w, "bind one with `teambrain team bind <path|remote>`")
+			return app.Emit("team.status", map[string]any{
+				"vault": personalPath,
+				"bound": root.IsBound(),
+				"teams": teams,
+			}, func(w io.Writer) {
+				if len(teams) == 0 {
+					fmt.Fprintln(w, "no team vaults bound")
+					fmt.Fprintln(w, "bind one with `teambrain team bind <path|remote> --name <name>`")
 					return
 				}
-				fmt.Fprintf(w, "team: %s\n", team.Describe(root.Team))
-				if root.Team.Path != "" {
-					_, statErr := os.Stat(root.Team.Path)
-					fmt.Fprintf(w, "exists: %t\n", statErr == nil)
-					fmt.Fprintf(w, "git repo: %t\n", git.NewShell().IsRepo(root.Team.Path))
+				for _, t := range teams {
+					target := t.Remote
+					if target == "" {
+						target = t.Path
+					}
+					fmt.Fprintf(w, "%-16s %s\n", t.Name, target)
+					if t.Path != "" {
+						fmt.Fprintf(w, "  exists: %t   git repo: %t\n", t.Exists, t.IsGitRepo)
+					}
 				}
 			})
 		},
 	}
 	cmd.Flags().StringVar(&vaultFlag, "vault", "", "personal vault path (default: current directory)")
 	return cmd
+}
+
+// loadPersonalRoot loads the personal vault's root manifest, mapping a missing
+// vault to a precondition error.
+func loadPersonalRoot(personalPath string) (*manifest.Root, error) {
+	root, err := manifest.LoadRoot(personalPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, exit.Preconditionf("%s is not a teambrain vault", personalPath).
+				WithHint("run `teambrain init` there first")
+		}
+		return nil, err
+	}
+	return root, nil
 }

@@ -43,20 +43,23 @@ func TestCommitSyncIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := personal.Write("projects/decision.md", []byte("---\ntitle: Decision\n---\n# Decision\n")); err != nil {
+	// The note routes itself to team "eng" via its teambrains property, and
+	// overrides its destination path.
+	if err := personal.Write("projects/decision.md",
+		[]byte("---\ntitle: Decision\nteambrains: [eng]\nteambrain_dest: adrs/0001-decision.md\n---\n# Decision\n")); err != nil {
 		t.Fatal(err)
 	}
 
-	p := NewPromoter(personal, team, git.NewShell())
-	if _, err := p.CreateSync([]Spec{{Src: "projects/decision.md", Dest: "adrs/0001-decision.md"}}, false); err != nil {
+	p := NewPromoter(personal, []TeamTarget{{Name: "eng", Vault: team}}, git.NewShell())
+	if _, err := p.CreateSync([]string{"projects/decision.md"}, false); err != nil {
 		t.Fatalf("CreateSync: %v", err)
 	}
 	res, err := p.CommitSync(CommitOptions{Push: true})
 	if err != nil {
 		t.Fatalf("CommitSync: %v", err)
 	}
-	if !res.Pushed {
-		t.Error("expected push")
+	if len(res.Teams) != 1 || !res.Teams[0].Pushed {
+		t.Errorf("expected one pushed team commit, got %+v", res.Teams)
 	}
 
 	// The promoted note is committed in the team repo...
@@ -70,7 +73,7 @@ func TestCommitSyncIntegration(t *testing.T) {
 		t.Errorf("promoted note not found on remote, got %q", remoteFiles)
 	}
 	// _sync was cleared.
-	if ok, _ := personal.Exists("_sync/adrs/0001-decision.md"); ok {
+	if ok, _ := personal.Exists("_sync/eng/adrs/0001-decision.md"); ok {
 		t.Error("_sync should be cleared after commit-sync")
 	}
 }

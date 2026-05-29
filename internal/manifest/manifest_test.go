@@ -38,11 +38,16 @@ func TestRootRoundTripBound(t *testing.T) {
 	dir := t.TempDir()
 
 	r := NewRoot(RolePersonal)
-	r.Team = &TeamBinding{
-		Path:    "/home/u/team-brain",
-		Remote:  "git@github.com:org/team-brain.git",
+	r.UpsertTeam(TeamBinding{
+		Name:    "alpha",
+		Path:    "/home/u/team-alpha",
 		BoundAt: "2026-05-29T12:00:00Z",
-	}
+	})
+	r.UpsertTeam(TeamBinding{
+		Name:    "beta",
+		Remote:  "git@github.com:org/team-beta.git",
+		BoundAt: "2026-05-29T12:00:00Z",
+	})
 	if err := SaveRoot(dir, r); err != nil {
 		t.Fatalf("SaveRoot: %v", err)
 	}
@@ -50,12 +55,52 @@ func TestRootRoundTripBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRoot: %v", err)
 	}
-	if !got.IsBound() || got.Team.Path != "/home/u/team-brain" {
-		t.Fatalf("binding not round-tripped: %+v", got.Team)
+	if !got.IsBound() || len(got.Teams) != 2 {
+		t.Fatalf("bindings not round-tripped: %+v", got.Teams)
+	}
+	alpha, ok := got.Team("alpha")
+	if !ok || alpha.Path != "/home/u/team-alpha" {
+		t.Fatalf("alpha not round-tripped: %+v", got.Teams)
 	}
 
 	raw, _ := os.ReadFile(filepath.Join(dir, FileName))
 	testutil.AssertGolden(t, filepath.Join("testdata", "root_bound.golden"), raw)
+}
+
+func TestRootUpsertAndRemoveTeam(t *testing.T) {
+	t.Parallel()
+	r := NewRoot(RolePersonal)
+	r.UpsertTeam(TeamBinding{Name: "alpha", Path: "/a"})
+	r.UpsertTeam(TeamBinding{Name: "alpha", Path: "/a2"}) // replace, not duplicate
+	if len(r.Teams) != 1 {
+		t.Fatalf("Upsert should replace by name, got %d", len(r.Teams))
+	}
+	if a, _ := r.Team("alpha"); a.Path != "/a2" {
+		t.Fatalf("Upsert did not replace path: %+v", a)
+	}
+	if !r.RemoveTeam("alpha") || r.RemoveTeam("alpha") {
+		t.Fatal("RemoveTeam should report true then false")
+	}
+	if r.IsBound() {
+		t.Fatal("root should be unbound after removing the last team")
+	}
+}
+
+func TestRootMigratesLegacyTeam(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// A pre-1.n manifest with a single unnamed `team` object.
+	legacy := `{"version":1,"vault":"personal","team":{"path":"/home/u/team-brain","bound_at":"2026-01-01T00:00:00Z"}}`
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadRoot(dir)
+	if err != nil {
+		t.Fatalf("LoadRoot: %v", err)
+	}
+	if len(got.Teams) != 1 || got.Teams[0].Name != "team" || got.Teams[0].Path != "/home/u/team-brain" {
+		t.Fatalf("legacy team not migrated: %+v", got.Teams)
+	}
 }
 
 func TestLoadRootMissingIsNotExist(t *testing.T) {

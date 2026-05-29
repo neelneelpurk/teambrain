@@ -1,4 +1,4 @@
-teambrain: promote 2 notes
+teambrain: promote 2 notes to alpha
 
-- adrs/a.md
-- runbooks/b.md
+- a.md
+- b.md

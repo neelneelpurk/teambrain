@@ -58,9 +58,10 @@ teambrain team init ~/team-brain
 # 2. Make the team vault a git repo (your team shares this).
 git -C ~/team-brain init && git -C ~/team-brain add -A && git -C ~/team-brain commit -m "init"
 
-# 3. Bind your personal brain to the one team brain (1:1).
+# 3. Bind your personal brain to one or more named team brains (1:n).
 cd ~/personal-brain
-teambrain team bind ~/team-brain
+teambrain team bind ~/team-eng --name eng
+teambrain team bind git@github.com:acme/team-design.git --name design   # clone locally to promote
 teambrain team status
 
 # 4. Author a capability in your brain, with Claude Code's help.
@@ -70,11 +71,12 @@ teambrain skill new daily-review --description "Summarize today's notes and surf
 cd ~/code/my-service
 teambrain hook import format-on-save --source ~/personal-brain   # shows the script, asks to confirm
 
-# 6. Promote a note to the team brain — reviewed before it lands.
+# 6. Promote notes to the team brains — each note routes itself by its tags.
+#    In the note's frontmatter:  teambrains: [eng, design]
 cd ~/personal-brain
-teambrain create-sync projects/adr-0001.md:adrs/0001.md
-teambrain view-sync          # shows a diff AND a link-integrity report
-teambrain commit-sync --push # copies into the team vault, commits ONLY those files, pushes
+teambrain create-sync          # scans the vault for tagged notes (or pass paths)
+teambrain view-sync            # per-team diff AND link-integrity report
+teambrain commit-sync --push   # promotes each note to every team it's tagged for, commits ONLY those files
 ```
 
 See the **[User Guide](USERGUIDE.md)** for the full walkthrough.
@@ -110,7 +112,7 @@ For a team, the **team brain** is the source of truth for blessed skills: curate
 ├── .claude/                  # skills/ agents/ hooks/ commands/  + .teambrain.json (ownership)
 ├── _sync/                    # staging for promotion to the team (gitignored)
 ├── inbox/ daily/ projects/ areas/ resources/
-└── .teambrain.json           # vault role + the 1:1 team binding
+└── .teambrain.json           # vault role + named team bindings (1:n)
 
 ~/team-brain/                 # Vault 2 — shared (its own git repo)
 ├── CLAUDE.md
@@ -118,7 +120,9 @@ For a team, the **team brain** is the source of truth for blessed skills: curate
 └── adrs/ design-docs/ runbooks/ conventions/ mocs/
 ```
 
-Two plain vaults, two plain git repos — no submodules, no symlinks. Links don't cross vaults; promotion is an explicit copy. That boundary is a feature: it keeps the separation clean and removes dangling cross-vault links entirely.
+Plain vaults, plain git repos — no submodules, no symlinks. Links don't cross vaults; promotion is an explicit copy. That boundary is a feature: it keeps the separation clean and removes dangling cross-vault links entirely.
+
+**One personal brain, many team brains (1:n).** Each team is bound under a name. A note declares its destinations in its own frontmatter — `teambrains: [eng, design]` — so a single note can be promoted to several team brains at once. `create-sync` reads that property and stages the note (same relative path, or a `teambrain_dest:` override) into each target; `commit-sync` commits it into each team's git repo.
 
 ## Command reference
 
@@ -126,8 +130,9 @@ Two plain vaults, two plain git repos — no submodules, no symlinks. Links don'
 |---|---|
 | `teambrain init [--here\|<path>]` | Scaffold (or repair) a personal-brain vault |
 | `teambrain team init <path>` | Scaffold a team-brain vault |
-| `teambrain team bind <path\|remote> [--force]` | Bind this personal vault to its one team vault |
-| `teambrain team status` | Report the binding and the team vault's git state |
+| `teambrain team bind <path\|remote> [--name <n>] [--force]` | Bind a named team vault (1:n; bind several) |
+| `teambrain team unbind <name>` | Remove a team binding |
+| `teambrain team status` | List bound teams and their git state |
 | `teambrain {skill,agent,hook,command} new <name>` | Author a new capability |
 | `teambrain {skill,agent,hook,command} list` | List capabilities (live filesystem scan) |
 | `teambrain skill catalog` | List the skills embedded in the binary |
@@ -135,9 +140,9 @@ Two plain vaults, two plain git repos — no submodules, no symlinks. Links don'
 | `teambrain {skill,agent,hook,command} import <name> --source <vault>` | Copy a capability into this repo's `.claude` |
 | `teambrain {skill,agent,hook,command} update <name>` | Refresh an installed capability from its source |
 | `teambrain {skill,agent,hook,command} uninstall <name>` | Remove a teambrain-owned capability |
-| `teambrain create-sync <path[:dest]>...` | Stage notes for promotion |
-| `teambrain view-sync` | Preview the payload with a diff and link-integrity report |
-| `teambrain commit-sync [--push] [--message <m>]` | Promote into the team vault and commit those files |
+| `teambrain create-sync [path]...` | Stage tagged notes for promotion (scans the vault if no paths) |
+| `teambrain view-sync` | Preview each team's payload with a diff and link-integrity report |
+| `teambrain commit-sync [--push] [--message <m>]` | Promote each note to every team it's tagged for, committing those files |
 | `teambrain doctor` | Report the active backend and check for capability tamper |
 
 **Global flags:** `--vault-backend fs\|obsidian\|auto` · `--json` · `--dry-run` · `--yes` · `--verbose/-v` · `--quiet` · `--no-color`

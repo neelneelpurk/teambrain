@@ -1,7 +1,9 @@
-// Package team implements the 1:1 binding from a personal vault to its team
-// vault. The binding is a single plain field in the personal vault's root
-// .teambrain.json — no central registry. Rebinding to a different team requires
-// an explicit force, so the link is never changed by accident.
+// Package team implements the 1:n bindings from a personal vault to its team
+// vaults. Each binding is a named entry in the personal vault's root
+// .teambrain.json — no central registry. Notes route to one or more teams by
+// the names they list in their `teambrains:` frontmatter property. Rebinding a
+// name to a different target requires an explicit force, so a link is never
+// changed by accident.
 package team
 
 import (
@@ -20,48 +22,75 @@ func IsRemote(target string) bool {
 		strings.HasSuffix(target, ".git")
 }
 
-// Binding builds a TeamBinding for target (a local path or a git remote),
+// DeriveName proposes a team name from a target: the repo name for a remote, or
+// the final path segment for a local path.
+func DeriveName(target string) string {
+	if IsRemote(target) {
+		base := target
+		if i := strings.LastIndexAny(base, "/:"); i >= 0 {
+			base = base[i+1:]
+		}
+		return strings.TrimSuffix(base, ".git")
+	}
+	return filepath.Base(filepath.Clean(target))
+}
+
+// Binding builds a named TeamBinding for target (a local path or a git remote),
 // stamping boundAt.
-func Binding(target, boundAt string) (*manifest.TeamBinding, error) {
-	b := &manifest.TeamBinding{BoundAt: boundAt}
+func Binding(name, target, boundAt string) (manifest.TeamBinding, error) {
+	b := manifest.TeamBinding{Name: name, BoundAt: boundAt}
 	if IsRemote(target) {
 		b.Remote = target
 		return b, nil
 	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
-		return nil, exit.Userf("resolve team path %q: %v", target, err)
+		return manifest.TeamBinding{}, exit.Userf("resolve team path %q: %v", target, err)
 	}
 	b.Path = abs
 	return b, nil
 }
 
-// Bind sets root's team binding to target. If a different team is already bound,
-// it refuses unless force is set; rebinding to the same target is idempotent.
-func Bind(root *manifest.Root, target, boundAt string, force bool) error {
-	next, err := Binding(target, boundAt)
+// Bind adds or updates the named team binding on root. Rebinding an existing
+// name to a different target requires force; rebinding to the same target is
+// idempotent. Distinct names coexist (1:n).
+func Bind(root *manifest.Root, name, target, boundAt string, force bool) error {
+	if name == "" {
+		return exit.Userf("a team name is required").WithHint("pass --name <name>")
+	}
+	next, err := Binding(name, target, boundAt)
 	if err != nil {
 		return err
 	}
-	if root.IsBound() && !sameTarget(root.Team, next) && !force {
-		return exit.Userf("a team vault is already bound (%s)", Describe(root.Team)).
-			WithHint("pass --force to rebind to a different team")
+	if existing, ok := root.Team(name); ok && !sameTarget(existing, next) && !force {
+		return exit.Userf("team %q is already bound to %s", name, Describe(existing)).
+			WithHint("pass --force to rebind it to a different target")
 	}
-	root.Team = next
+	root.UpsertTeam(next)
 	return nil
 }
 
-// Describe renders a binding for messages.
-func Describe(b *manifest.TeamBinding) string {
-	if b == nil {
-		return "none"
+// Unbind removes the named team binding.
+func Unbind(root *manifest.Root, name string) error {
+	if !root.RemoveTeam(name) {
+		return exit.Userf("no team named %q is bound", name).
+			WithHint("run `teambrain team status` to list bound teams")
 	}
-	if b.Remote != "" {
-		return b.Remote
-	}
-	return b.Path
+	return nil
 }
 
-func sameTarget(a, b *manifest.TeamBinding) bool {
+// Describe renders a binding's target for messages.
+func Describe(b manifest.TeamBinding) string {
+	switch {
+	case b.Remote != "":
+		return b.Remote
+	case b.Path != "":
+		return b.Path
+	default:
+		return b.Name
+	}
+}
+
+func sameTarget(a, b manifest.TeamBinding) bool {
 	return a.Path == b.Path && a.Remote == b.Remote
 }

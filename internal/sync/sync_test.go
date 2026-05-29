@@ -2,6 +2,7 @@ package sync
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/neelneelpurk/teambrain/internal/git"
@@ -9,90 +10,135 @@ import (
 	"github.com/neelneelpurk/teambrain/internal/vault"
 )
 
-func newPromoter(t *testing.T) (*Promoter, *vault.FakeVault, *vault.FakeVault, *git.Fake) {
+// newPromoter wires a personal vault to two team targets (alpha, beta) with
+// distinct roots so per-team git routing is observable.
+func newPromoter(t *testing.T) (*Promoter, *vault.FakeVault, map[string]*vault.FakeVault, *git.Fake) {
 	t.Helper()
 	personal := vault.NewFakeVault()
-	team := vault.NewFakeVault()
+	alpha := vault.NewFakeVaultAt("/teams/alpha")
+	beta := vault.NewFakeVaultAt("/teams/beta")
 	g := git.NewFake()
-	return NewPromoter(personal, team, g), personal, team, g
+	p := NewPromoter(personal, []TeamTarget{
+		{Name: "alpha", Vault: alpha},
+		{Name: "beta", Vault: beta},
+	}, g)
+	return p, personal, map[string]*vault.FakeVault{"alpha": alpha, "beta": beta}, g
 }
 
-func TestCreateSyncStagesAndNormalizes(t *testing.T) {
+func TestCreateSyncRoutesToMultipleTeams(t *testing.T) {
 	t.Parallel()
 	p, personal, _, _ := newPromoter(t)
 
-	_ = personal.Write("projects/adr.md", []byte("---\ntitle: ADR\n---\n# ADR\n\nbody [[other]]\n"))
+	// A note tagged for both teams.
+	_ = personal.Write("projects/adr.md", []byte("---\ntitle: ADR\nteambrains:\n  - alpha\n  - beta\n---\n# ADR\nbody\n"))
 
-	res, err := p.CreateSync([]Spec{{Src: "projects/adr.md", Dest: "adrs/0001.md"}}, false)
+	res, err := p.CreateSync([]string{"projects/adr.md"}, false)
 	if err != nil {
 		t.Fatalf("CreateSync: %v", err)
 	}
-	if len(res.Staged) != 1 || res.Staged[0].Dest != "adrs/0001.md" {
-		t.Fatalf("unexpected staged: %+v", res.Staged)
+	if len(res.Staged) != 2 {
+		t.Fatalf("expected the note staged to 2 teams, got %d: %+v", len(res.Staged), res.Staged)
 	}
-
-	// Staged under _sync mirroring the team destination.
-	if ok, _ := personal.Exists("_sync/adrs/0001.md"); !ok {
-		t.Fatal("note not staged under _sync")
+	if ok, _ := personal.Exists("_sync/alpha/projects/adr.md"); !ok {
+		t.Error("not staged for alpha")
 	}
-	// Original is untouched (copy, not move).
-	if ok, _ := personal.Exists("projects/adr.md"); !ok {
-		t.Fatal("original note should remain")
+	if ok, _ := personal.Exists("_sync/beta/projects/adr.md"); !ok {
+		t.Error("not staged for beta")
+	}
+	// Routing metadata is stripped from the promoted copy.
+	staged, _ := personal.Read("_sync/alpha/projects/adr.md")
+	if got := string(staged); contains(got, "teambrains") {
+		t.Errorf("promoted copy should not carry the teambrains property:\n%s", got)
+	}
+	// Original untouched.
+	orig, _ := personal.Read("projects/adr.md")
+	if !contains(string(orig), "teambrains") {
+		t.Error("original note should keep its teambrains property")
 	}
 }
 
-func TestCreateSyncDefaultsDestToSource(t *testing.T) {
+func TestCreateSyncScansWhenNoPaths(t *testing.T) {
 	t.Parallel()
 	p, personal, _, _ := newPromoter(t)
-	_ = personal.Write("conventions/style.md", []byte("# Style\n"))
+	_ = personal.Write("a.md", []byte("---\nteambrains: [alpha]\n---\nA\n"))
+	_ = personal.Write("b.md", []byte("---\nteambrains: [beta]\n---\nB\n"))
+	_ = personal.Write("untagged.md", []byte("# no property\n"))
 
-	res, err := p.CreateSync([]Spec{{Src: "conventions/style.md"}}, false)
+	res, err := p.CreateSync(nil, false)
+	if err != nil {
+		t.Fatalf("CreateSync(scan): %v", err)
+	}
+	if len(res.Staged) != 2 {
+		t.Fatalf("scan should stage the 2 tagged notes, got %d: %+v", len(res.Staged), res.Staged)
+	}
+}
+
+func TestCreateSyncUnknownTeamWarns(t *testing.T) {
+	t.Parallel()
+	p, personal, _, _ := newPromoter(t)
+	_ = personal.Write("n.md", []byte("---\nteambrains: [alpha, ghost]\n---\nN\n"))
+
+	res, err := p.CreateSync([]string{"n.md"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Staged[0].Dest != "conventions/style.md" {
-		t.Fatalf("dest = %q, want it to default to src", res.Staged[0].Dest)
+	if len(res.Staged) != 1 || res.Staged[0].Team != "alpha" {
+		t.Fatalf("only the bound team should be staged: %+v", res.Staged)
+	}
+	if len(res.Warnings) != 1 || !contains(res.Warnings[0], "ghost") {
+		t.Fatalf("expected a warning about the unbound team, got %v", res.Warnings)
+	}
+}
+
+func TestCreateSyncExplicitUntaggedWarns(t *testing.T) {
+	t.Parallel()
+	p, personal, _, _ := newPromoter(t)
+	_ = personal.Write("n.md", []byte("# no teambrains\n"))
+
+	res, err := p.CreateSync([]string{"n.md"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Staged) != 0 || len(res.Warnings) != 1 {
+		t.Fatalf("explicit untagged note should warn and stage nothing: %+v / %v", res.Staged, res.Warnings)
+	}
+}
+
+func TestCreateSyncDestOverride(t *testing.T) {
+	t.Parallel()
+	p, personal, _, _ := newPromoter(t)
+	_ = personal.Write("projects/x.md", []byte("---\nteambrains: [alpha]\nteambrain_dest: adrs/0001.md\n---\nX\n"))
+
+	res, err := p.CreateSync([]string{"projects/x.md"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Staged[0].Dest != "adrs/0001.md" {
+		t.Fatalf("dest override = %q, want adrs/0001.md", res.Staged[0].Dest)
+	}
+	if ok, _ := personal.Exists("_sync/alpha/adrs/0001.md"); !ok {
+		t.Error("not staged at the overridden dest")
 	}
 }
 
 func TestCreateSyncRejectsOutOfBoundsDest(t *testing.T) {
 	t.Parallel()
 	p, personal, _, _ := newPromoter(t)
-	_ = personal.Write("a.md", []byte("x"))
-	if _, err := p.CreateSync([]Spec{{Src: "a.md", Dest: "../escape.md"}}, false); err == nil {
-		t.Fatal("expected an out-of-bounds destination to be rejected")
+	_ = personal.Write("n.md", []byte("---\nteambrains: [alpha]\nteambrain_dest: ../escape.md\n---\nN\n"))
+	if _, err := p.CreateSync([]string{"n.md"}, false); err == nil {
+		t.Fatal("an escaping teambrain_dest should be rejected")
 	}
 }
 
-func TestCreateSyncDryRunWritesNothing(t *testing.T) {
+// TestViewSyncPerTeamLinkIntegrity is the acceptance for the link gate under 1:n.
+func TestViewSyncPerTeamLinkIntegrity(t *testing.T) {
 	t.Parallel()
-	p, personal, _, _ := newPromoter(t)
-	_ = personal.Write("a.md", []byte("x"))
-	if _, err := p.CreateSync([]Spec{{Src: "a.md", Dest: "a.md"}}, true); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := personal.Exists("_sync/a.md"); ok {
-		t.Fatal("dry-run must not stage")
-	}
-}
+	p, personal, teams, _ := newPromoter(t)
 
-// TestViewSyncLinkIntegrity is the Phase 5 acceptance for the link gate: a link
-// to a personal-only note is flagged; a link to another promoted note resolves.
-func TestViewSyncLinkIntegrity(t *testing.T) {
-	t.Parallel()
-	p, personal, team, _ := newPromoter(t)
-
-	// The team already has conventions/style.
-	_ = team.Write("conventions/style.md", []byte("# Style\n"))
-
-	// Promote two notes: one links to a teammate's existing note (ok), to the
-	// other promoted note (ok), and to a personal-only note (must be flagged).
-	_ = personal.Write("projects/a.md", []byte("see [[conventions/style]], [[adrs/0002]], and [[secret-diary]]\n"))
-	_ = personal.Write("projects/b.md", []byte("# B\n"))
-	if _, err := p.CreateSync([]Spec{
-		{Src: "projects/a.md", Dest: "adrs/0001.md"},
-		{Src: "projects/b.md", Dest: "adrs/0002.md"},
-	}, false); err != nil {
+	teams["alpha"].Write("conventions/style.md", []byte("# Style\n"))
+	// Targets alpha; links to a teammate's note (ok) and a personal-only note (flagged).
+	_ = personal.Write("p.md", []byte("---\nteambrains: [alpha]\n---\nsee [[conventions/style]] and [[secret-diary]]\n"))
+	if _, err := p.CreateSync([]string{"p.md"}, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,66 +146,21 @@ func TestViewSyncLinkIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ViewSync: %v", err)
 	}
-
-	if len(view.LinkIssues) != 1 {
-		t.Fatalf("expected exactly one link issue, got %+v", view.LinkIssues)
+	if len(view.Teams) != 1 || view.Teams[0].Team != "alpha" {
+		t.Fatalf("expected one team view for alpha, got %+v", view.Teams)
 	}
-	if view.LinkIssues[0].Link != "secret-diary" {
-		t.Fatalf("flagged link = %q, want secret-diary", view.LinkIssues[0].Link)
-	}
-
-	// Both staged notes appear; adrs/0001 is new to the team.
-	var found bool
-	for _, it := range view.Items {
-		if it.Dest == "adrs/0001.md" {
-			found = true
-			if it.Status != "new" {
-				t.Errorf("status = %q, want new", it.Status)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("staged note adrs/0001.md not in view")
+	issues := view.Teams[0].LinkIssues
+	if len(issues) != 1 || issues[0].Link != "secret-diary" {
+		t.Fatalf("expected secret-diary flagged, got %+v", issues)
 	}
 }
 
-func TestViewSyncDiffGolden(t *testing.T) {
+// TestCommitSyncFansOutPerTeam is the acceptance for 1:n commit routing.
+func TestCommitSyncFansOutPerTeam(t *testing.T) {
 	t.Parallel()
-	p, personal, team, _ := newPromoter(t)
-
-	team.Write("notes/x.md", []byte("line one\nline two\nline three\n"))
-	personal.Write("src.md", []byte("line one\nline two CHANGED\nline three\nline four\n"))
-	if _, err := p.CreateSync([]Spec{{Src: "src.md", Dest: "notes/x.md"}}, false); err != nil {
-		t.Fatal(err)
-	}
-	view, err := p.ViewSync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var diff string
-	for _, it := range view.Items {
-		if it.Dest == "notes/x.md" {
-			if it.Status != "modified" {
-				t.Fatalf("status = %q, want modified", it.Status)
-			}
-			diff = it.Diff
-		}
-	}
-	testutil.AssertGoldenString(t, filepath.Join("testdata", "view_diff.golden"), diff)
-}
-
-// TestCommitSyncPathScoped is the Phase 5 acceptance for staging: commit-sync
-// touches only the promoted files.
-func TestCommitSyncPathScoped(t *testing.T) {
-	t.Parallel()
-	p, personal, team, g := newPromoter(t)
-
-	personal.Write("a.md", []byte("# A\n"))
-	personal.Write("b.md", []byte("# B\n"))
-	if _, err := p.CreateSync([]Spec{
-		{Src: "a.md", Dest: "adrs/a.md"},
-		{Src: "b.md", Dest: "runbooks/b.md"},
-	}, false); err != nil {
+	p, personal, teams, g := newPromoter(t)
+	_ = personal.Write("shared.md", []byte("---\nteambrains: [alpha, beta]\n---\n# Shared\n"))
+	if _, err := p.CreateSync([]string{"shared.md"}, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -167,98 +168,82 @@ func TestCommitSyncPathScoped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CommitSync: %v", err)
 	}
-
-	// Team vault now has both notes.
-	if ok, _ := team.Exists("adrs/a.md"); !ok {
-		t.Error("team missing adrs/a.md")
+	if len(res.Teams) != 2 {
+		t.Fatalf("expected commits to 2 teams, got %+v", res.Teams)
 	}
-	if ok, _ := team.Exists("runbooks/b.md"); !ok {
-		t.Error("team missing runbooks/b.md")
+	// The note landed in both team vaults.
+	if ok, _ := teams["alpha"].Exists("shared.md"); !ok {
+		t.Error("alpha missing shared.md")
 	}
-	// git staged exactly the promoted paths — nothing else.
-	want := []string{"adrs/a.md", "runbooks/b.md"}
-	if len(g.Added) != 1 || !equalStringSet(g.Added[0], want) {
-		t.Fatalf("staged paths = %v, want exactly %v", g.Added, want)
+	if ok, _ := teams["beta"].Exists("shared.md"); !ok {
+		t.Error("beta missing shared.md")
 	}
-	if len(g.CommittedPaths) != 1 || !equalStringSet(g.CommittedPaths[0], want) {
-		t.Fatalf("committed paths = %v, want %v", g.CommittedPaths, want)
+	// git staged into both team roots, path-scoped.
+	if !containsStr(g.AddDirs, "/teams/alpha") || !containsStr(g.AddDirs, "/teams/beta") {
+		t.Fatalf("expected adds to both team roots, got %v", g.AddDirs)
 	}
-	if len(res.Committed) != 2 {
-		t.Fatalf("result committed = %v", res.Committed)
+	if !containsStr(g.CommitDirs, "/teams/alpha") || !containsStr(g.CommitDirs, "/teams/beta") {
+		t.Fatalf("expected commits to both team roots, got %v", g.CommitDirs)
 	}
-	// _sync is cleared.
-	notes, _ := personal.ListNotes("_sync")
-	if len(notes) != 0 {
+	// Staging cleared.
+	if notes, _ := personal.ListNotes("_sync"); len(notes) != 0 {
 		t.Fatalf("_sync should be cleared, still has %v", notes)
+	}
+}
+
+func TestCommitSyncDryRunWritesNothing(t *testing.T) {
+	t.Parallel()
+	p, personal, teams, g := newPromoter(t)
+	_ = personal.Write("n.md", []byte("---\nteambrains: [alpha]\n---\nN\n"))
+	_, _ = p.CreateSync([]string{"n.md"}, false)
+
+	res, err := p.CommitSync(CommitOptions{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Teams) != 1 || len(res.Teams[0].Committed) != 1 {
+		t.Fatalf("dry-run should report what it would commit: %+v", res.Teams)
+	}
+	if ok, _ := teams["alpha"].Exists("n.md"); ok {
+		t.Error("dry-run must not write to the team vault")
+	}
+	if len(g.Commits) != 0 {
+		t.Error("dry-run must not commit")
+	}
+	if ok, _ := personal.Exists("_sync/alpha/n.md"); !ok {
+		t.Error("dry-run must not clear staging")
 	}
 }
 
 func TestCommitSyncMessageGolden(t *testing.T) {
 	t.Parallel()
 	p, personal, _, _ := newPromoter(t)
-	personal.Write("a.md", []byte("# A\n"))
-	personal.Write("b.md", []byte("# B\n"))
-	p.CreateSync([]Spec{{Src: "a.md", Dest: "adrs/a.md"}, {Src: "b.md", Dest: "runbooks/b.md"}}, false)
+	_ = personal.Write("a.md", []byte("---\nteambrains: [alpha]\n---\nA\n"))
+	_ = personal.Write("b.md", []byte("---\nteambrains: [alpha]\n---\nB\n"))
+	_, _ = p.CreateSync(nil, false)
 
 	res, err := p.CommitSync(CommitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	testutil.AssertGoldenString(t, filepath.Join("testdata", "commit_message.golden"), res.Message)
+	testutil.AssertGoldenString(t, filepath.Join("testdata", "commit_message.golden"), res.Teams[0].Message)
 }
 
-func TestCommitSyncPushAndCustomMessage(t *testing.T) {
+func TestCommitSyncNothingStaged(t *testing.T) {
 	t.Parallel()
-	p, personal, _, g := newPromoter(t)
-	personal.Write("a.md", []byte("# A\n"))
-	p.CreateSync([]Spec{{Src: "a.md", Dest: "adrs/a.md"}}, false)
-
-	res, err := p.CommitSync(CommitOptions{Message: "custom message", Push: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Message != "custom message" {
-		t.Errorf("message = %q", res.Message)
-	}
-	if !res.Pushed || g.Pushes != 1 {
-		t.Errorf("expected a push")
-	}
-}
-
-func TestCommitSyncErrors(t *testing.T) {
-	t.Parallel()
-
-	// Nothing staged.
 	p, _, _, _ := newPromoter(t)
 	if _, err := p.CommitSync(CommitOptions{}); err == nil {
-		t.Error("commit with empty _sync should error")
-	}
-
-	// No team bound.
-	personal := vault.NewFakeVault()
-	personal.Write("a.md", []byte("x"))
-	p2 := NewPromoter(personal, nil, git.NewFake())
-	p2.CreateSync([]Spec{{Src: "a.md", Dest: "a.md"}}, false)
-	if _, err := p2.CommitSync(CommitOptions{}); err == nil {
-		t.Error("commit with no team bound should error")
+		t.Fatal("commit with empty staging should error")
 	}
 }
 
-func equalStringSet(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	seen := map[string]int{}
-	for _, s := range a {
-		seen[s]++
-	}
-	for _, s := range b {
-		seen[s]--
-	}
-	for _, v := range seen {
-		if v != 0 {
-			return false
+func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+func containsStr(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
 		}
 	}
-	return true
+	return false
 }

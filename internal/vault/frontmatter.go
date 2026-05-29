@@ -2,6 +2,7 @@ package vault
 
 import (
 	"bytes"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -97,6 +98,49 @@ func (d *Document) Get(key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// GetList returns the string items of a sequence-valued frontmatter key, or a
+// single-element list for a scalar value. It returns nil when the key is absent
+// or empty. Used to read list properties like `teambrains: [alpha, beta]`.
+func (d *Document) GetList(key string) []string {
+	if d.mapping == nil {
+		return nil
+	}
+	for i := 0; i+1 < len(d.mapping.Content); i += 2 {
+		if d.mapping.Content[i].Value != key {
+			continue
+		}
+		v := d.mapping.Content[i+1]
+		if v.Kind == yaml.SequenceNode {
+			out := make([]string, 0, len(v.Content))
+			for _, item := range v.Content {
+				if s := strings.TrimSpace(item.Value); s != "" {
+					out = append(out, s)
+				}
+			}
+			return out
+		}
+		if s := strings.TrimSpace(v.Value); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+	return nil
+}
+
+// Remove deletes a frontmatter key, reporting whether it existed.
+func (d *Document) Remove(key string) bool {
+	if d.mapping == nil {
+		return false
+	}
+	for i := 0; i+1 < len(d.mapping.Content); i += 2 {
+		if d.mapping.Content[i].Value == key {
+			d.mapping.Content = append(d.mapping.Content[:i], d.mapping.Content[i+2:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // Keys returns the frontmatter keys in document order.

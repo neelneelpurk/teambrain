@@ -29,18 +29,55 @@ const (
 	RoleTeam     = "team"
 )
 
-// Root is the vault-root manifest (`<vault>/.teambrain.json`).
+// Root is the vault-root manifest (`<vault>/.teambrain.json`). A personal vault
+// may bind to several team vaults (1:n); each binding carries a unique Name that
+// notes reference via their `teambrains:` frontmatter property.
 type Root struct {
-	Version int          `json:"version"`
-	Vault   string       `json:"vault"`
-	Team    *TeamBinding `json:"team,omitempty"`
+	Version int           `json:"version"`
+	Vault   string        `json:"vault"`
+	Teams   []TeamBinding `json:"teams,omitempty"`
 }
 
-// TeamBinding is the 1:1 pointer from a personal vault to its team vault.
+// TeamBinding is a named pointer from a personal vault to one team vault.
 type TeamBinding struct {
+	Name    string `json:"name"`
 	Path    string `json:"path,omitempty"`
 	Remote  string `json:"remote,omitempty"`
 	BoundAt string `json:"bound_at,omitempty"`
+}
+
+// rootJSON is the on-disk shape, including the legacy single `team` field for
+// backward-compatible reads.
+type rootJSON struct {
+	Version int           `json:"version"`
+	Vault   string        `json:"vault"`
+	Teams   []TeamBinding `json:"teams,omitempty"`
+	Team    *TeamBinding  `json:"team,omitempty"` // legacy (pre-1.n)
+}
+
+// UnmarshalJSON reads the on-disk shape and migrates a legacy single `team` into
+// the Teams list (named after its path/remote) when no Teams are present.
+func (r *Root) UnmarshalJSON(data []byte) error {
+	var raw rootJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.Version = raw.Version
+	r.Vault = raw.Vault
+	r.Teams = raw.Teams
+	if len(r.Teams) == 0 && raw.Team != nil {
+		legacy := *raw.Team
+		if legacy.Name == "" {
+			legacy.Name = "team"
+		}
+		r.Teams = []TeamBinding{legacy}
+	}
+	return nil
+}
+
+// MarshalJSON writes only the current shape (never the legacy `team` field).
+func (r *Root) MarshalJSON() ([]byte, error) {
+	return json.Marshal(rootJSON{Version: r.Version, Vault: r.Vault, Teams: r.Teams})
 }
 
 // NewRoot returns an unbound root manifest for the given role.
@@ -48,9 +85,42 @@ func NewRoot(role string) *Root {
 	return &Root{Version: Version, Vault: role}
 }
 
-// IsBound reports whether a team vault is bound.
+// IsBound reports whether at least one team vault is bound.
 func (r *Root) IsBound() bool {
-	return r.Team != nil && (r.Team.Path != "" || r.Team.Remote != "")
+	return len(r.Teams) > 0
+}
+
+// Team returns the binding with the given name and whether it was found.
+func (r *Root) Team(name string) (TeamBinding, bool) {
+	for _, t := range r.Teams {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return TeamBinding{}, false
+}
+
+// UpsertTeam adds binding, replacing any existing team with the same name
+// (preserving its position).
+func (r *Root) UpsertTeam(binding TeamBinding) {
+	for i := range r.Teams {
+		if r.Teams[i].Name == binding.Name {
+			r.Teams[i] = binding
+			return
+		}
+	}
+	r.Teams = append(r.Teams, binding)
+}
+
+// RemoveTeam deletes the named team, reporting whether it existed.
+func (r *Root) RemoveTeam(name string) bool {
+	for i := range r.Teams {
+		if r.Teams[i].Name == name {
+			r.Teams = append(r.Teams[:i], r.Teams[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // Claude is the .claude ownership manifest (`.claude/.teambrain.json`).

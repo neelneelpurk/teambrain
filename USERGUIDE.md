@@ -7,10 +7,10 @@ This guide walks through every teambrain workflow end to end. If you just want t
 1. [Concepts](#concepts)
 2. [Installation](#installation)
 3. [Setting up your vaults](#setting-up-your-vaults)
-4. [Binding a team vault](#binding-a-team-vault)
+4. [Binding team vaults (1:n)](#binding-team-vaults-1n)
 5. [Authoring capabilities](#authoring-capabilities)
 6. [Distributing capabilities into code repos](#distributing-capabilities-into-code-repos)
-7. [Promoting notes to the team brain](#promoting-notes-to-the-team-brain)
+7. [Promoting notes to the team brains](#promoting-notes-to-the-team-brains)
 8. [Hooks and safety](#hooks-and-safety)
 9. [Health checks with doctor](#health-checks-with-doctor)
 10. [Backends: fs vs Obsidian](#backends-fs-vs-obsidian)
@@ -82,32 +82,34 @@ Create a team brain the same way (note the different folders — `adrs/`, `desig
 teambrain team init ~/team-brain
 ```
 
-## Binding a team vault
+## Binding team vaults (1:n)
 
-A personal brain points at exactly **one** team brain. The binding is a single field in `~/personal-brain/.teambrain.json` — no central registry.
+A personal brain can bind to **several** team brains, each under a unique **name**. Notes reference those names to route themselves (see [Promoting notes](#promoting-notes-to-the-team-brains)). The bindings are a plain list in `~/personal-brain/.teambrain.json` — no central registry.
 
 ```sh
 cd ~/personal-brain
-teambrain team bind ~/team-brain          # bind to a local path
-# or
-teambrain team bind git@github.com:acme/team-brain.git   # bind to a remote
+teambrain team bind ~/team-eng --name eng         # local path
+teambrain team bind git@github.com:acme/design.git --name design   # remote
 ```
 
-Check it:
+The `--name` defaults to the target's final path segment (or repo name); set it explicitly when you want a short, stable name for tags. List everything:
 
 ```sh
 teambrain team status
-# team: /Users/you/team-brain
-# exists: true
-# git repo: true
+# eng              /Users/you/team-eng
+#   exists: true   git repo: true
+# design           git@github.com:acme/design.git
 ```
 
-Rebinding to a **different** team is refused unless you pass `--force`, so the link never changes by accident:
+Rebinding the **same name** to a different target is refused unless you pass `--force`, so a link never changes by accident — but distinct names coexist freely:
 
 ```sh
-teambrain team bind ~/other-team           # error: a team vault is already bound
-teambrain team bind ~/other-team --force   # ok
+teambrain team bind ~/other --name eng           # error: team "eng" is already bound
+teambrain team bind ~/other --name eng --force   # ok
+teambrain team unbind design                     # remove a binding
 ```
+
+> **Remote-only teams:** to *promote* to a team you need a local working tree. A team bound by remote URL alone is skipped (with a warning) by `create-sync`/`commit-sync` — clone it and rebind with the local path.
 
 > All `team` and sync commands accept `--vault <path>` to target a personal vault other than the current directory, or set `personal_vault` in config.
 
@@ -208,18 +210,29 @@ cd ~/code/my-service
 teambrain skill import daily-review      # searches personal + team automatically
 ```
 
-## Promoting notes to the team brain
+## Promoting notes to the team brains
 
-Promotion is a deliberate three-step flow with a safety gate.
+Notes route themselves. A note declares its destination team(s) in its own frontmatter — so promotion is tag-driven, and one note can go to several teams.
 
-**1. Stage** the notes you want to share. The destination mirrors where they'll live in the team vault (`src:dest`, or just `src` to keep the same path):
+```markdown
+---
+title: ADR-0001: adopt OAuth
+teambrains: [eng, design]          # the team names you bound
+teambrain_dest: adrs/0001.md       # optional; defaults to the note's own path
+---
+```
+
+Promotion is then a deliberate three-step flow with a safety gate.
+
+**1. Stage.** With no arguments, `create-sync` scans the whole vault for notes carrying a `teambrains:` property and stages each into every team it names; pass paths to stage just those:
 
 ```sh
 cd ~/personal-brain
-teambrain create-sync projects/adr-0001.md:adrs/0001.md runbooks/deploy.md
+teambrain create-sync                       # scan the vault for tagged notes
+teambrain create-sync projects/adr-0001.md  # or stage specific notes
 ```
 
-This copies the notes into `~/personal-brain/_sync/` (gitignored), normalizing their frontmatter. **Originals are untouched.**
+Each note is copied into `~/personal-brain/_sync/<team>/` (gitignored), with frontmatter normalized and the routing properties (`teambrains`, `teambrain_dest`) stripped from the promoted copy. **Originals are untouched.** A note that names an **unbound** team is reported as a warning and skipped for that team.
 
 **2. Review** before anything is published:
 
@@ -227,30 +240,27 @@ This copies the notes into `~/personal-brain/_sync/` (gitignored), normalizing t
 teambrain view-sync
 ```
 
-`view-sync` shows, for each staged note, whether it's **new** or **modified** in the team vault (with a diff), and a **link-integrity report**:
+`view-sync` groups by team and shows, per note, whether it's **new** or **modified** in that team vault (with a diff), plus a **link-integrity report**:
 
 ```
+── team: eng ──
 new        adrs/0001.md
-    + ---
-    + title: ADR 1
-    + ---
     + relates to [[secret-research]]
-
-link integrity: 1 unresolved link(s) — these will dangle in the team vault:
+link integrity: 1 unresolved link(s) — will dangle in eng:
   adrs/0001.md → [[secret-research]]
 ```
 
-A link resolves if its target already exists in the team vault **or** is itself part of this promotion. Anything else is flagged so you can also-stage it, inline it, or leave it — your call, before it lands.
+A link resolves if its target already exists in that team vault **or** is part of that team's payload. Anything else is flagged so you can also-tag it, inline it, or leave it — your call, before it lands.
 
-**3. Commit** into the team vault:
+**3. Commit** into each team vault:
 
 ```sh
-teambrain commit-sync               # copy + commit those files
-teambrain commit-sync --push        # also push to the team remote
+teambrain commit-sync               # copy + commit per team
+teambrain commit-sync --push        # also push each team to its remote
 teambrain commit-sync --message "promote auth ADR"
 ```
 
-`commit-sync` copies `_sync/` into the team vault, **stages and commits only those paths** (a dirty tree is fine — your teammates' uncommitted work is left alone), optionally pushes, and clears `_sync/`. Use `--dry-run` to see exactly what would be committed without writing anything.
+`commit-sync` copies each team's `_sync/<team>/` payload into that team vault, **stages and commits only those paths** (a dirty tree is fine — teammates' uncommitted work is left alone), optionally pushes, and clears the staging. A note tagged for two teams is committed to both repos. Use `--dry-run` to see exactly what would be committed without writing anything.
 
 ## Hooks and safety
 
@@ -347,7 +357,8 @@ Nothing is locked in.
 | Symptom | Cause / fix |
 |---|---|
 | `is not a teambrain vault` (exit 2) | Run `teambrain init` in that directory, or pass `--vault <path>`. |
-| `no team vault bound` (exit 2) | Run `teambrain team bind <path\|remote>`. |
+| `no team vaults bound` / note skipped | Bind a team with `teambrain team bind <path> --name <n>`, and tag the note `teambrains: [<n>]`. |
+| `references unbound team "x"` (warning) | The note's `teambrains:` lists a team you haven't bound under that name. |
 | `team vault is not a git repository` (exit 3) | `git init` the team vault (and add a remote for `--push`). |
 | `is ambiguous; found in ...` (exit 1) | Pass `--from <label>` to pick a source. |
 | `not a teambrain-owned capability` (exit 1) | You can only `uninstall` what teambrain installed; check `… list`. |
