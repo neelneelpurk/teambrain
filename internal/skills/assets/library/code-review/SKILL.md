@@ -8,6 +8,15 @@ description: Review a diff or pull request for correctness, security, and clarit
 Review the change like an owner who will maintain it, not a gate to pass. Be
 concrete and kind. Quote the exact lines.
 
+## Ground it in the brain first (Obsidian CLI)
+
+Before reviewing, find what the vault already mandates. Run `obsidian --help` to
+see the available commands, then use the Obsidian CLI to search the vault for
+relevant conventions, ADRs, and runbooks for this area (naming rules, a security
+ADR, a service runbook) and read the ones that apply. Hold the diff to the
+team's *written* standards instead of inventing them on the spot. (No Obsidian
+CLI? See the `search-brain` skill.)
+
 ## Method
 
 1. **Understand the intent first.** What problem does this change solve? If you

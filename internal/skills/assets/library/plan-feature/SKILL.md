@@ -9,8 +9,11 @@ A plan's job is to make the work small, ordered, and verifiable — and to surfa
 the risky unknowns before they cost a week. Bias toward the smallest version
 that delivers value.
 
-> Find related notes, prior art, and constraints first via the Obsidian MCP/CLI
-> (see the `search-brain` skill) before scoping.
+## Find prior art and constraints first (Obsidian CLI)
+
+Run `obsidian --help`, then use the Obsidian CLI to search the vault for related
+projects, prior ADRs, and constraints. Plan against what the team already knows,
+not a blank page. (No Obsidian CLI? See the `search-brain` skill.)
 
 ## Method
 

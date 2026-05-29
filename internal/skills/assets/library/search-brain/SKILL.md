@@ -13,8 +13,9 @@ before reasoning — don't answer from memory or guess from filenames.
 1. **Obsidian MCP** — if Obsidian MCP tools are connected this session, use them
    first. They query the live app: the best search, backlinks, outline, and link
    resolution available.
-2. **Obsidian CLI** — else if `obsidian` is on your PATH, use it:
-   `obsidian search <query>`, plus backlinks/outline/read to pull context.
+2. **Obsidian CLI** — else if `obsidian` is on your PATH, use it. Run
+   `obsidian --help` for the exact commands (the CLI is evolving), then search
+   the vault, read notes, and list backlinks to pull context.
 3. **Neither present? STOP.** Tell the user that brain retrieval needs the
    Obsidian CLI or an Obsidian MCP, and how to set one up. Do **not** fall back to
    blind `grep`/`glob` over the vault — that is exactly the low-signal guessing

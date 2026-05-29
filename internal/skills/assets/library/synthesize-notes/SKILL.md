@@ -8,8 +8,11 @@ description: Distill raw notes, a meeting, or a long thread into decisions, acti
 Raw notes are input; the output is what a busy reader needs: what was decided,
 what to do, and what's still unknown. Compress aggressively.
 
-> Find related notes first via the Obsidian MCP/CLI (see the `search-brain`
-> skill) so the synthesis connects to what's already in the brain.
+## Connect it to the brain (Obsidian CLI)
+
+Run `obsidian --help`, then use the Obsidian CLI to search the vault for related
+notes and follow backlinks, so the synthesis links into what's already there
+instead of floating alone. (No Obsidian CLI? See the `search-brain` skill.)
 
 ## Method
 

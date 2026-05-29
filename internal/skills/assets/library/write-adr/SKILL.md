@@ -8,8 +8,13 @@ description: Capture an architecture decision as a short, durable record (contex
 An ADR records *why*, so the next person (often future-you) doesn't relitigate
 a settled decision or repeat a discarded one. Keep it to one page.
 
-> Find related notes and prior ADRs first via the Obsidian MCP/CLI (see the
-> `search-brain` skill) — don't re-decide something already on record.
+## Check the record first (Obsidian CLI)
+
+Run `obsidian --help`, then use the Obsidian CLI to search `adrs/` and related
+notes for prior decisions on this topic. Don't re-decide what's already on
+record — supersede it explicitly instead. Once the ADR is written, create it in
+the vault with the Obsidian CLI so its links resolve and it's discoverable. (No
+Obsidian CLI? See the `search-brain` skill.)
 
 ## Structure
 

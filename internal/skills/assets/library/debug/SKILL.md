@@ -8,6 +8,14 @@ description: Diagnose a bug methodically — reproduce, isolate, fix, and guard.
 Resist the urge to guess-and-patch. A bug you don't understand isn't fixed, it's
 hidden.
 
+## Search the brain for prior art first (Obsidian CLI)
+
+Before forming hypotheses, run `obsidian --help`, then use the Obsidian CLI to
+search the vault for this error, system, or symptom — prior incidents,
+postmortems, and debugging notes often hold the root cause or a known fix.
+Follow backlinks to the affected service's notes. Don't rediscover what a
+teammate already wrote down. (No Obsidian CLI? See the `search-brain` skill.)
+
 ## Method
 
 1. **Reproduce it deterministically.** The smallest input that triggers it. If

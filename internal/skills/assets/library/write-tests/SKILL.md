@@ -8,6 +8,13 @@ description: Write focused, fast tests for a unit of code, test-first when possi
 A test exists to catch a regression a human would otherwise ship. Optimize for
 that, not for coverage numbers.
 
+## Match the team's conventions first (Obsidian CLI)
+
+Run `obsidian --help`, then use the Obsidian CLI to search the vault for testing
+conventions and patterns for this area before writing — adopt the house style
+(fixtures, table-driven layout, naming) rather than inventing your own. (No
+Obsidian CLI? See the `search-brain` skill.)
+
 ## Method
 
 1. **Name the behavior, not the method.** `TestWithdraw_rejectsOverdraft`, not

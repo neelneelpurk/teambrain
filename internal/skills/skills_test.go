@@ -89,3 +89,24 @@ func TestLibraryIsCuratedAndExcludesScaffolders(t *testing.T) {
 		t.Error("LibrarySkill should report missing skills as not found")
 	}
 }
+
+// TestLibrarySkillsDriveObsidianCLI locks in the product requirement that every
+// embedded library skill leans on the Obsidian CLI to find relevant files and
+// get things done — not generic guidance.
+func TestLibrarySkillsDriveObsidianCLI(t *testing.T) {
+	t.Parallel()
+
+	lib, err := Library()
+	if err != nil {
+		t.Fatalf("Library: %v", err)
+	}
+	for _, e := range lib {
+		body := strings.ToLower(string(e.Content))
+		if !strings.Contains(body, "obsidian") {
+			t.Errorf("library skill %q does not reference Obsidian", e.Name)
+		}
+		if !strings.Contains(body, "obsidian --help") && !strings.Contains(body, "obsidian cli") {
+			t.Errorf("library skill %q should point at the Obsidian CLI concretely", e.Name)
+		}
+	}
+}

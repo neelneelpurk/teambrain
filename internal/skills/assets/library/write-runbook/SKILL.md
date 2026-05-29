@@ -8,6 +8,13 @@ description: Write an operational runbook for a service or procedure that a tire
 A runbook is for someone under stress who did not write the system. Optimize for
 copy-pasteable, unambiguous steps — not prose.
 
+## Find related runbooks first (Obsidian CLI)
+
+Run `obsidian --help`, then use the Obsidian CLI to search the vault for
+existing runbooks and notes about this system — reuse established steps,
+escalation paths, and naming instead of duplicating them. Follow backlinks to
+the service's other docs. (No Obsidian CLI? See the `search-brain` skill.)
+
 ## Structure
 
 ```markdown
