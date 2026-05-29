@@ -20,7 +20,7 @@ func storeFor(app *App, dir string) *capability.Store {
 
 // newSkillCommand assembles `teambrain skill list|new`.
 func newSkillCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "skill", Short: "Author and list skills", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "skill", Short: "Create, install, and manage skills in .claude", Args: cobra.NoArgs}
 	cmd.AddCommand(newListCommand("skill", capability.KindSkill))
 
 	var dir, description string
@@ -107,7 +107,7 @@ func newSkillAddCommand() *cobra.Command {
 
 // newAgentCommand assembles `teambrain agent list|new`.
 func newAgentCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "agent", Short: "Author and list agents", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "agent", Short: "Create, install, and manage agents in .claude", Args: cobra.NoArgs}
 	cmd.AddCommand(newListCommand("agent", capability.KindAgent))
 
 	var dir, description string
@@ -125,7 +125,7 @@ func newAgentCommand() *cobra.Command {
 		},
 	}
 	newCmd.Flags().StringVar(&dir, "dir", ".", "directory containing the .claude folder")
-	newCmd.Flags().StringVar(&description, "description", "", "one-line description")
+	newCmd.Flags().StringVar(&description, "description", "", "one-line description (the trigger)")
 	cmd.AddCommand(newCmd)
 	cmd.AddCommand(newImportCommand("agent", capability.KindAgent))
 	cmd.AddCommand(newUpdateCommand("agent", capability.KindAgent))
@@ -135,7 +135,7 @@ func newAgentCommand() *cobra.Command {
 
 // newHookCommand assembles `teambrain hook list|new`.
 func newHookCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "hook", Short: "Author and list hooks", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "hook", Short: "Create, install, and manage hooks in .claude", Args: cobra.NoArgs}
 	cmd.AddCommand(newListCommand("hook", capability.KindHook))
 
 	var dir, event, matcher string
@@ -168,7 +168,7 @@ func newHookCommand() *cobra.Command {
 
 // newCommandCommand assembles `teambrain command list|new|import|update|uninstall`.
 func newCommandCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "command", Short: "Author and list slash commands", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "command", Short: "Create, install, and manage slash commands in .claude", Args: cobra.NoArgs}
 	cmd.AddCommand(newListCommand("command", capability.KindCommand))
 
 	var dir, description string
@@ -186,7 +186,7 @@ func newCommandCommand() *cobra.Command {
 		},
 	}
 	newCmd.Flags().StringVar(&dir, "dir", ".", "directory containing the .claude folder")
-	newCmd.Flags().StringVar(&description, "description", "", "one-line description")
+	newCmd.Flags().StringVar(&description, "description", "", "one-line description (the trigger)")
 	cmd.AddCommand(newCmd)
 	cmd.AddCommand(newImportCommand("command", capability.KindCommand))
 	cmd.AddCommand(newUpdateCommand("command", capability.KindCommand))

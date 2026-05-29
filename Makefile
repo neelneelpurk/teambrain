@@ -4,6 +4,7 @@
 GOPATH_BIN       := $(shell go env GOPATH)/bin
 GOLANGCI_VERSION := v2.12.2
 BINARY           := teambrain
+MCP_BINARY       := teambrain-mcp
 PKG              := github.com/neelneelpurk/teambrain
 VERSION          ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT           ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -21,12 +22,19 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: ## Build the binary into ./bin
+build: ## Build the CLI binary into ./bin
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/teambrain
 
+.PHONY: build-mcp
+build-mcp: ## Build the Obsidian MCP server into ./bin
+	go build -ldflags "$(LDFLAGS)" -o bin/$(MCP_BINARY) ./cmd/teambrain-mcp
+
+.PHONY: build-all
+build-all: build build-mcp ## Build both binaries into ./bin
+
 .PHONY: install
-install: ## go install the binary into GOPATH/bin
-	go install -ldflags "$(LDFLAGS)" ./cmd/teambrain
+install: ## go install both binaries into GOPATH/bin
+	go install -ldflags "$(LDFLAGS)" ./cmd/teambrain ./cmd/teambrain-mcp
 
 .PHONY: test
 test: ## Run all tests

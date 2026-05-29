@@ -40,7 +40,8 @@ on a vault missing a file repairs just that file.`,
 
 			res, err := scaffold.PersonalVault(v, app.Config.DryRun)
 			if err != nil {
-				return exit.Externalf("scaffold vault: %v", err)
+				return exit.Preconditionf("scaffold vault: %v", err).
+					WithHint("check the path is writable and not inside another vault")
 			}
 
 			// Brain retrieval requires Obsidian (MCP or CLI). Surface the
@@ -60,6 +61,12 @@ on a vault missing a file repairs just that file.`,
 					for _, f := range res.Created {
 						fmt.Fprintf(w, "  + %s\n", f)
 					}
+				}
+				if !app.Config.DryRun {
+					fmt.Fprintln(w, "\nNext steps:")
+					fmt.Fprintln(w, "  1. Bind a team brain:   teambrain team bind <path|remote> --name <name>")
+					fmt.Fprintln(w, "  2. Browse built-in skills: teambrain skill catalog")
+					fmt.Fprintln(w, "  3. Tag a note `teambrains: [<name>]`, then ask Claude Code to promote it to the team")
 				}
 			})
 		},

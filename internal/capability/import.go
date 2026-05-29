@@ -121,7 +121,11 @@ func (s *Store) PlanImport(opts ImportOptions) (*Plan, error) {
 		if opts.From != "" {
 			return nil, exit.Userf("%s %q not found in source %q", opts.Kind, opts.Name, opts.From)
 		}
-		return nil, exit.Userf("%s %q not found in any source", opts.Kind, opts.Name)
+		notFound := exit.Userf("%s %q not found in any source", opts.Kind, opts.Name)
+		if opts.Kind == KindSkill {
+			notFound = notFound.WithHint("for a built-in skill, try `teambrain skill add " + opts.Name + "` (browse them with `teambrain skill catalog`)")
+		}
+		return nil, notFound
 	case 1:
 		// ok
 	default:

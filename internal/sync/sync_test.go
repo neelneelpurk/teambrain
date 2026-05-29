@@ -237,6 +237,92 @@ func TestCommitSyncNothingStaged(t *testing.T) {
 	}
 }
 
+// TestCommitSyncLinkGateBlocksUnlessForced is the acceptance for the real link
+// gate: a payload that would dangle is refused before any write, and --force is
+// the documented override.
+func TestCommitSyncLinkGateBlocksUnlessForced(t *testing.T) {
+	t.Parallel()
+	p, personal, teams, g := newPromoter(t)
+	teams["alpha"].Write("conventions/style.md", []byte("# Style\n"))
+	// Links to a teammate's note (resolves) and a personal-only note (dangles).
+	_ = personal.Write("p.md", []byte("---\nteambrains: [alpha]\n---\nsee [[conventions/style]] and [[secret-diary]]\n"))
+	if _, err := p.CreateSync([]string{"p.md"}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without force the dangling link blocks promotion before anything is written.
+	if _, err := p.CommitSync(CommitOptions{}); err == nil {
+		t.Fatal("expected the link gate to block promotion")
+	}
+	if ok, _ := teams["alpha"].Exists("p.md"); ok {
+		t.Error("a refused commit must not write to the team vault")
+	}
+	if len(g.Commits) != 0 {
+		t.Error("a refused commit must not commit")
+	}
+	if ok, _ := personal.Exists("_sync/alpha/p.md"); !ok {
+		t.Error("staging should be intact after a refused commit")
+	}
+
+	// With force it promotes despite the dangling link.
+	if _, err := p.CommitSync(CommitOptions{Force: true}); err != nil {
+		t.Fatalf("force should override the gate: %v", err)
+	}
+	if ok, _ := teams["alpha"].Exists("p.md"); !ok {
+		t.Error("forced promotion should write to the team vault")
+	}
+}
+
+// TestCreateSyncScanClearsStaleStaging is the acceptance for the stale-staging
+// fix: a whole-vault re-scan drops the orphaned staged copy of a note that is no
+// longer tagged, so commit-sync can't promote ghosts.
+func TestCreateSyncScanClearsStaleStaging(t *testing.T) {
+	t.Parallel()
+	p, personal, _, _ := newPromoter(t)
+	_ = personal.Write("keep.md", []byte("---\nteambrains: [alpha]\n---\nkeep\n"))
+	_ = personal.Write("drop.md", []byte("---\nteambrains: [alpha]\n---\ndrop\n"))
+	if _, err := p.CreateSync(nil, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Untag drop.md, then re-scan.
+	_ = personal.Write("drop.md", []byte("# no longer promoted\n"))
+	res, err := p.CreateSync(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := personal.Exists("_sync/alpha/drop.md"); ok {
+		t.Error("a re-scan should clear the orphaned staged copy of an untagged note")
+	}
+	if ok, _ := personal.Exists("_sync/alpha/keep.md"); !ok {
+		t.Error("still-tagged notes should remain staged after a re-scan")
+	}
+	if len(res.Staged) != 1 {
+		t.Fatalf("re-scan should stage only the still-tagged note, got %d", len(res.Staged))
+	}
+}
+
+// TestCreateSyncExplicitIsAdditive confirms explicit paths add to existing
+// staging rather than rebuilding it (so the promote-to-team skill can stage
+// incrementally).
+func TestCreateSyncExplicitIsAdditive(t *testing.T) {
+	t.Parallel()
+	p, personal, _, _ := newPromoter(t)
+	_ = personal.Write("a.md", []byte("---\nteambrains: [alpha]\n---\nA\n"))
+	_ = personal.Write("b.md", []byte("---\nteambrains: [alpha]\n---\nB\n"))
+	if _, err := p.CreateSync([]string{"a.md"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateSync([]string{"b.md"}, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"_sync/alpha/a.md", "_sync/alpha/b.md"} {
+		if ok, _ := personal.Exists(want); !ok {
+			t.Errorf("explicit staging should be additive; missing %s", want)
+		}
+	}
+}
+
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 func containsStr(ss []string, want string) bool {
