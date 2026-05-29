@@ -79,6 +79,29 @@ teambrain commit-sync --push # copies into the team vault, commits ONLY those fi
 
 See the **[User Guide](USERGUIDE.md)** for the full walkthrough.
 
+## Batteries-included skill library
+
+teambrain ships a curated set of high-signal engineering skills **embedded in the binary** — no other LLM API required. Claude Code is the reasoning layer; these skills are the prompts that direct it, and teambrain is the deterministic harness that places and distributes them.
+
+```sh
+teambrain skill catalog        # see what's embedded
+teambrain skill add code-review # install one into the current repo's .claude
+```
+
+`init` seeds the whole library into a new vault, so a fresh brain is immediately useful. The current library:
+
+| Skill | What it does |
+|---|---|
+| `code-review` | Review a diff/PR for correctness, security, and clarity |
+| `write-tests` | Write focused, fast, test-first tests |
+| `debug` | Reproduce → isolate → root-cause → guard |
+| `write-adr` | Capture an architecture decision durably |
+| `write-runbook` | Write an on-call-grade operational runbook |
+| `synthesize-notes` | Distill notes into decisions, actions, open questions |
+| `plan-feature` | Turn a problem into a small, phased, verifiable plan |
+
+For a team, the **team brain** is the source of truth for blessed skills: curate them there, and members `teambrain skill import <name> --source <team-brain>` into their repos. Standardization without a service to run.
+
 ## Architecture
 
 ```
@@ -107,6 +130,8 @@ Two plain vaults, two plain git repos — no submodules, no symlinks. Links don'
 | `teambrain team status` | Report the binding and the team vault's git state |
 | `teambrain {skill,agent,hook,command} new <name>` | Author a new capability |
 | `teambrain {skill,agent,hook,command} list` | List capabilities (live filesystem scan) |
+| `teambrain skill catalog` | List the skills embedded in the binary |
+| `teambrain skill add <name>` | Install an embedded library skill (no source vault or LLM needed) |
 | `teambrain {skill,agent,hook,command} import <name> --source <vault>` | Copy a capability into this repo's `.claude` |
 | `teambrain {skill,agent,hook,command} update <name>` | Refresh an installed capability from its source |
 | `teambrain {skill,agent,hook,command} uninstall <name>` | Remove a teambrain-owned capability |
@@ -158,7 +183,9 @@ teambrain --json skill list | jq '.data.capabilities[].name'
 - **`obsidian`** routes operations through the [Obsidian CLI](https://help.obsidian.md), whose decisive advantage is a **link-preserving move** using Obsidian's own resolver.
 - **`auto`** picks `obsidian` when its CLI is detected, otherwise `fs`, and logs the choice. If you write directly to a live vault while Obsidian is running, teambrain warns about the desync risk.
 
-> Retrieval is intentionally **out of scope**: configure your own Obsidian MCP in Claude Code. `doctor` will, read-only, remind you if none is detected.
+### Retrieval (via Obsidian)
+
+Finding the right notes is **Obsidian's job**. Its live index, search, backlinks, and link resolver beat anything teambrain would reimplement — and they need no other LLM API. So teambrain **requires Obsidian for retrieval** (an Obsidian MCP, preferred, or the Obsidian CLI) and ships a `search-brain` skill that teaches Claude Code to use it: search first, fetch only what's needed, follow backlinks, cite `note#heading`, and never guess from filenames. `teambrain doctor` reports the active retrieval path (`obsidian-mcp` / `obsidian-cli` / `unavailable`) and `init` warns loudly if neither is present. teambrain does **not** reimplement search.
 
 ## Development
 

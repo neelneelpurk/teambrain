@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,17 +36,48 @@ func TestDetectedLabel(t *testing.T) {
 	}
 }
 
-func TestMCPReminder(t *testing.T) {
-	t.Parallel()
+func TestRetrievalStatus(t *testing.T) {
+	// Isolate from a host Obsidian CLI and the real ~/.claude.json.
+	t.Setenv("PATH", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows home
 	dir := t.TempDir()
-	if mcpReminder(dir) == "" {
-		t.Fatal("expected a reminder when no .mcp.json present")
+
+	// Neither CLI nor an Obsidian MCP -> unavailable.
+	if path, ok := retrievalStatus(dir); ok || path != retrievalNone {
+		t.Fatalf("expected unavailable, got %q,%v", path, ok)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte("{}"), 0o644); err != nil {
+
+	// An obsidian-named MCP server in .mcp.json -> obsidian-mcp.
+	writeFile(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"obsidian":{"command":"x"}}}`)
+	if path, ok := retrievalStatus(dir); !ok || path != retrievalMCP {
+		t.Fatalf("expected obsidian-mcp, got %q,%v", path, ok)
+	}
+
+	// A non-obsidian MCP server does not count.
+	writeFile(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"github":{"command":"x"}}}`)
+	if path, ok := retrievalStatus(dir); ok || path != retrievalNone {
+		t.Fatalf("non-obsidian MCP should not count, got %q,%v", path, ok)
+	}
+
+	// The Obsidian CLI on PATH -> obsidian-cli (POSIX exec bit; skip on Windows).
+	if runtime.GOOS != "windows" {
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "obsidian"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin)
+		if path, ok := retrievalStatus(dir); !ok || path != retrievalCLI {
+			t.Fatalf("expected obsidian-cli, got %q,%v", path, ok)
+		}
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
-	}
-	if mcpReminder(dir) != "" {
-		t.Fatal("no reminder expected when .mcp.json exists")
 	}
 }
 

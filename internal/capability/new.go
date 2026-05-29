@@ -41,6 +41,27 @@ func (s *Store) NewSkill(name, description string) (*NewResult, error) {
 	return &NewResult{Name: name, Kind: string(KindSkill), Path: rel, Created: []string{rel}, Changed: true}, nil
 }
 
+// AddSkill installs a skill with pre-written content (for example from the
+// embedded library) at .claude/skills/<name>/SKILL.md. It is idempotent and
+// never clobbers an existing skill, so re-adding is safe.
+func (s *Store) AddSkill(name string, content []byte) (*NewResult, error) {
+	if err := validateName(name); err != nil {
+		return nil, err
+	}
+	rel := filepath.ToSlash(filepath.Join("skills", name, "SKILL.md"))
+	abs := filepath.Join(s.dir, filepath.FromSlash(rel))
+	res := &NewResult{Name: name, Kind: string(KindSkill), Path: rel, Created: []string{}}
+	if fileExists(abs) {
+		return res, nil // already present; leave the user's copy untouched
+	}
+	if err := s.write(abs, content, 0o644); err != nil {
+		return nil, err
+	}
+	res.Created = []string{rel}
+	res.Changed = true
+	return res, nil
+}
+
 // NewAgent creates .claude/agents/<name>.md with valid frontmatter and a stub
 // system prompt. It errors if the agent already exists.
 func (s *Store) NewAgent(name, description string) (*NewResult, error) {

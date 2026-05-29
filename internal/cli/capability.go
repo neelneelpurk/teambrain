@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/neelneelpurk/teambrain/internal/capability"
+	"github.com/neelneelpurk/teambrain/internal/exit"
+	"github.com/neelneelpurk/teambrain/internal/skills"
 )
 
 // storeFor builds a capability.Store for the .claude directory under dir,
@@ -41,6 +43,65 @@ func newSkillCommand() *cobra.Command {
 	cmd.AddCommand(newImportCommand("skill", capability.KindSkill))
 	cmd.AddCommand(newUpdateCommand("skill", capability.KindSkill))
 	cmd.AddCommand(newUninstallCommand("skill", capability.KindSkill))
+	cmd.AddCommand(newSkillCatalogCommand())
+	cmd.AddCommand(newSkillAddCommand())
+	return cmd
+}
+
+// newSkillCatalogCommand lists the skills embedded in the teambrain binary.
+func newSkillCatalogCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "catalog",
+		Short: "List the skills embedded in teambrain (installable with `skill add`)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			app := appFrom(cmd.Context())
+			lib, err := skills.Library()
+			if err != nil {
+				return err
+			}
+			return app.Emit("skill.catalog", map[string]any{"skills": lib}, func(w io.Writer) {
+				for _, e := range lib {
+					fmt.Fprintf(w, "%-18s %s\n", e.Name, e.Description)
+				}
+			})
+		},
+	}
+}
+
+// newSkillAddCommand installs an embedded library skill into a .claude folder —
+// no source vault and no LLM required.
+func newSkillAddCommand() *cobra.Command {
+	var dir string
+	cmd := &cobra.Command{
+		Use:   "add <name>",
+		Short: "Install an embedded library skill into .claude/skills",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := appFrom(cmd.Context())
+			entry, ok := skills.LibrarySkill(args[0])
+			if !ok {
+				return exit.Userf("no embedded skill named %q", args[0]).
+					WithHint("run `teambrain skill catalog` to see what's available")
+			}
+			res, err := storeFor(app, dir).AddSkill(entry.Name, entry.Content)
+			if err != nil {
+				return err
+			}
+			return app.Emit("skill.add", res, func(w io.Writer) {
+				if !res.Changed {
+					fmt.Fprintf(w, "%q is already installed (left untouched)\n", res.Name)
+					return
+				}
+				verb := "installed"
+				if app.Config.DryRun {
+					verb = "would install"
+				}
+				fmt.Fprintf(w, "%s skill %q at %s\n", verb, res.Name, res.Path)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "directory containing the .claude folder")
 	return cmd
 }
 

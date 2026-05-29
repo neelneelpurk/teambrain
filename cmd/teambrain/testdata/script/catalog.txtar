@@ -1,0 +1,28 @@
+# The embedded skill library: discover with catalog, install with add, and it
+# ships seeded into a fresh vault.
+env XDG_CONFIG_HOME=$WORK/cfg
+
+# Catalog lists curated skills baked into the binary.
+exec teambrain skill catalog
+stdout 'code-review'
+stdout 'write-tests'
+stdout 'debug'
+stdout 'search-brain'
+
+# init seeds the library into a new vault (batteries included).
+exec teambrain init $WORK/brain
+exists $WORK/brain/.claude/skills/code-review/SKILL.md
+exists $WORK/brain/.claude/skills/write-adr/SKILL.md
+exists $WORK/brain/.claude/skills/search-brain/SKILL.md
+exists $WORK/brain/.claude/skills/create-teambrain-skill/SKILL.md
+
+# add installs a single embedded skill into any repo — no source vault, no LLM.
+mkdir $WORK/repo
+exec teambrain skill add code-review --dir $WORK/repo
+exists $WORK/repo/.claude/skills/code-review/SKILL.md
+exec teambrain --json skill list --dir $WORK/repo
+stdout '"name": "code-review"'
+
+# Adding an unknown skill is a user error.
+! exec teambrain skill add nonexistent --dir $WORK/repo
+stderr 'no embedded skill'

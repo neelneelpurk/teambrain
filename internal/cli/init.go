@@ -43,6 +43,12 @@ on a vault missing a file repairs just that file.`,
 				return exit.Externalf("scaffold vault: %v", err)
 			}
 
+			// Brain retrieval requires Obsidian (MCP or CLI). Surface the
+			// dependency loudly at init so it isn't discovered only at query time.
+			if _, ok := retrievalStatus(root); !ok {
+				app.Warn("brain retrieval is unavailable: %s", retrievalSetupHint)
+			}
+
 			return app.Emit("init", res, func(w io.Writer) {
 				verb := "created"
 				if app.Config.DryRun {

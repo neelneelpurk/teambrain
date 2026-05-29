@@ -67,6 +67,38 @@ func TestDoctorDetectsTamper(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsRetrievalPath(t *testing.T) {
+	code, stdout, _ := runRoot(t, "--json", "doctor")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	// The retrieval path is host-dependent (obsidian may be installed), but the
+	// field must always be reported.
+	if !strings.Contains(stdout.String(), `"retrieval"`) {
+		t.Fatalf("doctor JSON should report a retrieval path:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"retrieval_available"`) {
+		t.Fatalf("doctor JSON should report retrieval_available:\n%s", stdout.String())
+	}
+}
+
+func TestInitWarnsWhenObsidianAbsent(t *testing.T) {
+	// Force Obsidian absent: empty PATH + isolated home (no ~/.claude.json).
+	t.Setenv("PATH", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	dir := filepath.Join(t.TempDir(), "brain")
+	code, _, stderr := runRoot(t, "init", dir)
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(stderr.String(), "retrieval is unavailable") {
+		t.Fatalf("init should warn loudly that retrieval needs Obsidian, stderr=%q", stderr.String())
+	}
+}
+
 func TestCommandNewAndList(t *testing.T) {
 	dir := t.TempDir()
 	if code, _, e := runRoot(t, "command", "new", "triage", "--description", "Triage inbox", "--dir", dir); code != 0 {

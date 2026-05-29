@@ -5,8 +5,10 @@ exec teambrain --json doctor
 stdout '"ok": true'
 stdout '"command": "doctor"'
 stdout '"vault_backend": "auto"'
+stdout '"retrieval"'
 ! stderr .
 
-# Human mode prints a readable line, not JSON.
+# Human mode prints a readable line, not JSON, including the retrieval path.
 exec teambrain doctor
 stdout 'vault backend: auto'
+stdout 'retrieval:'

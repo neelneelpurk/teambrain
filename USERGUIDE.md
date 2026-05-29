@@ -140,6 +140,20 @@ Delete a capability file and it simply disappears from `list`. There is no cache
 
 > All authoring/listing commands take `--dir <path>` to operate on a `.claude` folder other than the one in the current directory.
 
+### The embedded skill library
+
+teambrain ships a curated library of engineering skills **inside the binary**, so you have a strong baseline with no other LLM API — Claude Code does the reasoning, the skills direct it. `init` seeds the whole library into a new vault. To discover and install individual skills into any existing `.claude`:
+
+```sh
+teambrain skill catalog                 # list embedded skills + descriptions
+teambrain skill add code-review         # install one into ./.claude/skills
+teambrain skill add debug --dir ~/code/my-service
+```
+
+`skill add` is idempotent and never clobbers an edited copy. The current library covers `code-review`, `write-tests`, `debug`, `write-adr`, `write-runbook`, `synthesize-notes`, and `plan-feature`.
+
+For a team, treat the **team brain** as the canonical home for blessed skills: curate them there (edit, or `skill add` then refine), and have everyone `skill import <name> --source <team-brain>` into their repos. That gives you standardized skills across the team with nothing to operate.
+
 ## Distributing capabilities into code repos
 
 Capabilities authored in a brain can be installed into any code repository's `.claude/`. Run the command **inside the target repo** ("act where you are").
@@ -254,14 +268,24 @@ teambrain doctor
 # vault backend: auto (active: fs)
 # obsidian CLI:  not detected
 # ownership:     OK (no checksum drift)
-# retrieval:     no .mcp.json found; configure an Obsidian MCP in Claude Code for retrieval
+# retrieval:     UNAVAILABLE — install the Obsidian CLI or configure an Obsidian MCP in Claude Code (the search-brain skill needs it)
 ```
 
-`doctor` inspects the `.claude` in the current directory (override with `--dir`). Under `--json` it returns a `healthy` boolean and a `drift` array you can gate CI on:
+`doctor` inspects the `.claude` in the current directory (override with `--dir`). Under `--json` it returns `healthy`/`drift` (tamper) plus `retrieval`/`retrieval_available` (whether brain retrieval is wired up), all of which you can gate CI on:
 
 ```sh
-teambrain --json doctor --dir ~/code/my-service | jq '.data.healthy'
+teambrain --json doctor --dir ~/code/my-service | jq '.data.healthy, .data.retrieval'
 ```
+
+## Retrieval (via Obsidian)
+
+Finding the right notes is **Obsidian's job**, not teambrain's — Obsidian's live index, search, backlinks, and link resolver are better than any reimplementation and need no extra LLM API. teambrain therefore **requires Obsidian for retrieval** and drives it from the embedded `search-brain` skill (seeded by `init`, listed in `skill catalog`). When you ask Claude Code something that depends on vault knowledge, the skill:
+
+1. uses the **Obsidian MCP** if one is connected (preferred — the live app), else the **Obsidian CLI** (`obsidian search`/backlinks/outline);
+2. if neither is present, it **stops and tells you to set one up** rather than guessing with blind `grep`;
+3. fetches only the notes/sections it needs, follows backlinks to widen, and cites every claim's `note#heading`.
+
+`teambrain doctor` shows the active path (`obsidian-mcp` / `obsidian-cli` / `unavailable`) and `init` warns if neither is present. teambrain intentionally does not reimplement search — and stores no index, so there is nothing to rebuild or keep in sync.
 
 ## Backends: fs vs Obsidian
 

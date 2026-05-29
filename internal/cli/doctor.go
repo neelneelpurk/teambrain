@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -32,17 +31,16 @@ func newDoctorCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			mcp := mcpReminder(dir)
+			retrieval, retrievalOK := retrievalStatus(dir)
 
 			data := map[string]any{
-				"vault_backend":     app.Config.VaultBackend,
-				"obsidian_detected": detected,
-				"active_backend":    active,
-				"healthy":           len(drift) == 0,
-				"drift":             drift,
-			}
-			if mcp != "" {
-				data["mcp_reminder"] = mcp
+				"vault_backend":       app.Config.VaultBackend,
+				"obsidian_detected":   detected,
+				"active_backend":      active,
+				"healthy":             len(drift) == 0,
+				"drift":               drift,
+				"retrieval":           retrieval,
+				"retrieval_available": retrievalOK,
 			}
 
 			return app.Emit("doctor", data, func(w io.Writer) {
@@ -56,8 +54,10 @@ func newDoctorCommand() *cobra.Command {
 						fmt.Fprintf(w, "  - %s (%s): %s\n", d.Name, d.File, d.Reason)
 					}
 				}
-				if mcp != "" {
-					fmt.Fprintf(w, "retrieval:     %s\n", mcp)
+				if retrievalOK {
+					fmt.Fprintf(w, "retrieval:     %s (live)\n", retrieval)
+				} else {
+					fmt.Fprintf(w, "retrieval:     UNAVAILABLE — %s\n", retrievalSetupHint)
 				}
 			})
 		},
@@ -90,12 +90,4 @@ func detectedLabel(detected bool) string {
 		return "detected"
 	}
 	return "not detected"
-}
-
-// mcpReminder returns a read-only reminder when no MCP config is found in dir.
-func mcpReminder(dir string) string {
-	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); err == nil {
-		return ""
-	}
-	return "no .mcp.json found; configure an Obsidian MCP in Claude Code for retrieval (teambrain does not manage it)"
 }

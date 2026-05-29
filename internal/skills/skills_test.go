@@ -8,15 +8,18 @@ import (
 	"github.com/neelneelpurk/teambrain/internal/vault"
 )
 
-func TestSeedsAreThreeValidScaffolders(t *testing.T) {
+func TestSeedsAreValidAndIncludeScaffolders(t *testing.T) {
 	t.Parallel()
 
 	seeds, err := Seeds()
 	if err != nil {
 		t.Fatalf("Seeds: %v", err)
 	}
+	if len(seeds) < 10 {
+		t.Fatalf("expected the scaffolders plus the library (>=10 seeds), got %d", len(seeds))
+	}
 
-	wantNames := map[string]bool{
+	wantScaffolders := map[string]bool{
 		"create-teambrain-skill": false,
 		"create-teambrain-agent": false,
 		"create-teambrain-hook":  false,
@@ -30,30 +33,59 @@ func TestSeedsAreThreeValidScaffolders(t *testing.T) {
 		folder := path.Base(path.Dir(s.RelPath))
 
 		doc, err := vault.ParseDocument(s.Content)
-		if err != nil {
-			t.Errorf("seed %s: parse frontmatter: %v", s.RelPath, err)
+		if err != nil || !doc.HasFrontmatter {
+			t.Errorf("seed %s: invalid frontmatter: %v", s.RelPath, err)
 			continue
 		}
-		if !doc.HasFrontmatter {
-			t.Errorf("seed %s has no frontmatter", s.RelPath)
+		if name, _ := doc.Get("name"); name != folder {
+			t.Errorf("seed %s: frontmatter name=%q, want %q", s.RelPath, name, folder)
 		}
-		name, ok := doc.Get("name")
-		if !ok || name != folder {
-			t.Errorf("seed %s: frontmatter name=%q, want folder name %q", s.RelPath, name, folder)
+		if desc, _ := doc.Get("description"); strings.TrimSpace(desc) == "" {
+			t.Errorf("seed %s: missing description", s.RelPath)
 		}
-		if desc, ok := doc.Get("description"); !ok || strings.TrimSpace(desc) == "" {
-			t.Errorf("seed %s: missing/empty description", s.RelPath)
-		}
-		if _, known := wantNames[name]; known {
-			wantNames[name] = true
-		} else {
-			t.Errorf("unexpected seed name %q", name)
+		if _, ok := wantScaffolders[folder]; ok {
+			wantScaffolders[folder] = true
 		}
 	}
 
-	for name, seen := range wantNames {
+	for name, seen := range wantScaffolders {
 		if !seen {
-			t.Errorf("expected seed %q was not produced", name)
+			t.Errorf("scaffolder %q missing from seeds", name)
 		}
+	}
+}
+
+func TestLibraryIsCuratedAndExcludesScaffolders(t *testing.T) {
+	t.Parallel()
+
+	lib, err := Library()
+	if err != nil {
+		t.Fatalf("Library: %v", err)
+	}
+	if len(lib) < 5 {
+		t.Fatalf("expected a curated library, got %d entries", len(lib))
+	}
+
+	for _, e := range lib {
+		if strings.HasPrefix(e.Name, "create-teambrain-") {
+			t.Errorf("scaffolder %q must not appear in the library catalog", e.Name)
+		}
+		if e.Description == "" {
+			t.Errorf("library skill %q has no description", e.Name)
+		}
+		if len(e.Content) == 0 {
+			t.Errorf("library skill %q has no content", e.Name)
+		}
+	}
+
+	// A few of the high-signal skills we expect to ship, including the
+	// Obsidian-powered retrieval skill.
+	for _, must := range []string{"code-review", "write-tests", "debug", "search-brain"} {
+		if _, ok := LibrarySkill(must); !ok {
+			t.Errorf("expected library skill %q", must)
+		}
+	}
+	if _, ok := LibrarySkill("nope"); ok {
+		t.Error("LibrarySkill should report missing skills as not found")
 	}
 }
