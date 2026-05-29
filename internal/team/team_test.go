@@ -60,6 +60,11 @@ func TestBindManyTeamsCoexist(t *testing.T) {
 func TestBindForceGuardPerName(t *testing.T) {
 	t.Parallel()
 	root := manifest.NewRoot(manifest.RolePersonal)
+	// Bind stores absolute paths, which are OS-specific (e.g. D:\teams\alpha on
+	// Windows), so compare against the resolved form rather than the literal.
+	wantAlpha := mustAbs(t, "/teams/alpha")
+	wantOther := mustAbs(t, "/teams/other")
+
 	if err := Bind(root, "alpha", "/teams/alpha", "t0", false); err != nil {
 		t.Fatal(err)
 	}
@@ -71,16 +76,25 @@ func TestBindForceGuardPerName(t *testing.T) {
 	if err := Bind(root, "alpha", "/teams/other", "t2", false); err == nil {
 		t.Fatal("rebinding a name to a different target without --force should fail")
 	}
-	if a, _ := root.Team("alpha"); a.Path != "/teams/alpha" {
+	if a, _ := root.Team("alpha"); a.Path != wantAlpha {
 		t.Fatalf("refused rebind must not change the target, got %q", a.Path)
 	}
 	// With force -> rebinds.
 	if err := Bind(root, "alpha", "/teams/other", "t3", true); err != nil {
 		t.Fatalf("forced rebind: %v", err)
 	}
-	if a, _ := root.Team("alpha"); a.Path != "/teams/other" {
+	if a, _ := root.Team("alpha"); a.Path != wantOther {
 		t.Fatalf("forced rebind did not take: %+v", a)
 	}
+}
+
+func mustAbs(t *testing.T, p string) string {
+	t.Helper()
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		t.Fatalf("abs %q: %v", p, err)
+	}
+	return abs
 }
 
 func TestUnbind(t *testing.T) {

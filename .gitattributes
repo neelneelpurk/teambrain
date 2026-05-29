@@ -1,0 +1,13 @@
+# Normalize all text files to LF on checkout, on every platform. teambrain's
+# golden fixtures are byte-exact, so a Windows CRLF checkout would break the
+# golden comparisons. Go source requires LF anyway, and there are no Windows
+# batch files that need CRLF.
+* text=auto eol=lf
+
+# Be explicit for the fixture and source types that matter most.
+*.go      text eol=lf
+*.golden  text eol=lf
+*.txtar   text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.sh      text eol=lf

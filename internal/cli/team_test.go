@@ -78,8 +78,9 @@ func TestTeamBindForceGuardViaCLI(t *testing.T) {
 		t.Fatal("forced rebind should succeed")
 	}
 	root, _ := manifest.LoadRoot(personal)
-	if b, _ := root.Team("x"); b.Path != "/teams/beta" {
-		t.Fatalf("binding = %q, want /teams/beta", b.Path)
+	wantBeta, _ := filepath.Abs("/teams/beta") // absolute, OS-specific on Windows
+	if b, _ := root.Team("x"); b.Path != wantBeta {
+		t.Fatalf("binding = %q, want %q", b.Path, wantBeta)
 	}
 
 	// A DIFFERENT name coexists (1:n) without --force.
