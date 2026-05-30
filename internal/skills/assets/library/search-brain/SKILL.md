@@ -12,7 +12,9 @@ before reasoning — don't answer from memory or guess from filenames.
 
 1. **Obsidian MCP** — if Obsidian MCP tools are connected this session, use them
    first. They query the live app: the best search, backlinks, outline, and link
-   resolution available.
+   resolution available. teambrain ships one, `teambrain-mcp`, which wraps the
+   Obsidian Local REST API and exposes `search_brain`, `read_note`, `note_outline`,
+   `list_backlinks`, and `promotion_candidates`.
 2. **Obsidian CLI** — else if `obsidian` is on your PATH, use it. Run
    `obsidian --help` for the exact commands (the CLI is evolving), then search
    the vault, read notes, and list backlinks to pull context.

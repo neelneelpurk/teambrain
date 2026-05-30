@@ -214,6 +214,8 @@ teambrain skill import daily-review      # searches personal + team automaticall
 
 Notes route themselves. A note declares its destination team(s) in its own frontmatter — so promotion is tag-driven, and one note can go to several teams.
 
+The easiest way to promote is to ask Claude Code. The seeded **`promote-to-team`** skill walks the whole flow — finding candidate notes (via Obsidian), staging them, resolving any links that would dangle in the team vault, and committing. The three commands below are the deterministic primitives that skill (or you) drive.
+
 ```markdown
 ---
 title: ADR-0001: adopt OAuth
@@ -232,7 +234,7 @@ teambrain create-sync                       # scan the vault for tagged notes
 teambrain create-sync projects/adr-0001.md  # or stage specific notes
 ```
 
-Each note is copied into `~/personal-brain/_sync/<team>/` (gitignored), with frontmatter normalized and the routing properties (`teambrains`, `teambrain_dest`) stripped from the promoted copy. **Originals are untouched.** A note that names an **unbound** team is reported as a warning and skipped for that team.
+Each note is copied into `~/personal-brain/_sync/<team>/` (gitignored), with frontmatter normalized and the routing properties (`teambrains`, `teambrain_dest`) stripped from the promoted copy. **Originals are untouched.** A note that names an **unbound** team is reported as a warning and skipped for that team. A whole-vault scan (no paths) recomputes the entire set, so it first clears any prior staging — untag or rename a note and its stale staged copy won't linger to be promoted by accident. Passing explicit paths is additive.
 
 **2. Review** before anything is published:
 
@@ -255,12 +257,13 @@ A link resolves if its target already exists in that team vault **or** is part o
 **3. Commit** into each team vault:
 
 ```sh
-teambrain commit-sync               # copy + commit per team
+teambrain commit-sync               # copy + commit per team (asks first)
 teambrain commit-sync --push        # also push each team to its remote
-teambrain commit-sync --message "promote auth ADR"
+teambrain commit-sync --yes         # skip the confirmation (required under --json)
+teambrain commit-sync --force       # promote even if a link would dangle
 ```
 
-`commit-sync` copies each team's `_sync/<team>/` payload into that team vault, **stages and commits only those paths** (a dirty tree is fine — teammates' uncommitted work is left alone), optionally pushes, and clears the staging. A note tagged for two teams is committed to both repos. Use `--dry-run` to see exactly what would be committed without writing anything.
+`commit-sync` writes to **shared** repositories, so it shows what it will promote and asks before committing (`--yes` to skip; under `--json` it refuses without `--yes` rather than block on a prompt). The **link-integrity gate is enforced here**: if a team's payload carries a link that would dangle in that team vault, the promotion is refused unless you pass `--force` — so you cannot publish a dangling link by skipping `view-sync`. It copies each team's `_sync/<team>/` payload into that team vault, **stages and commits only those paths** (a dirty tree is fine — teammates' uncommitted work is left alone), optionally pushes, and clears the staging. A note tagged for two teams is committed to both repos. Use `--dry-run` to preview without writing.
 
 ## Hooks and safety
 
@@ -296,6 +299,43 @@ Finding the right notes is **Obsidian's job**, not teambrain's — Obsidian's li
 3. fetches only the notes/sections it needs, follows backlinks to widen, and cites every claim's `note#heading`.
 
 `teambrain doctor` shows the active path (`obsidian-mcp` / `obsidian-cli` / `unavailable`) and `init` warns if neither is present. teambrain intentionally does not reimplement search — and stores no index, so there is nothing to rebuild or keep in sync.
+
+### The bundled MCP: `teambrain-mcp`
+
+teambrain ships its own Obsidian MCP server so the preferred retrieval path works out of the box. `teambrain-mcp` bridges Claude Code to **running** Obsidian vaults via the [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) community plugin (Obsidian does the actual searching) and exposes **read-only**, teambrain-shaped tools: `list_vaults`, `search_brain`, `read_note` (whole note or a single heading), `read_active_note`, `note_outline`, `list_backlinks`, `list_notes`, `list_tags`, and `promotion_candidates` (notes carrying a `teambrains:` property — the input to `promote-to-team`). Every tool takes an optional `vault` argument; it performs no writes — mutating a vault stays the deterministic CLI's job.
+
+**Setup:**
+
+1. In Obsidian, install and enable the **Local REST API** plugin, then copy its API key from the plugin settings.
+2. Build the server: `make build-mcp`, or `go install github.com/neelneelpurk/teambrain/cmd/teambrain-mcp@latest`.
+3. Register it in Claude Code (`~/.claude.json` or a project `.mcp.json`) under a key containing **obsidian**, so `teambrain doctor` reports retrieval as available:
+
+```json
+{
+  "mcpServers": {
+    "obsidian-teambrain": {
+      "command": "teambrain-mcp",
+      "env": { "OBSIDIAN_API_KEY": "<your-key>" }
+    }
+  }
+}
+```
+
+For a single vault, configuration is via environment variables (matching the common Obsidian MCPs): `OBSIDIAN_API_KEY` (required), `OBSIDIAN_HOST` (default `127.0.0.1`), `OBSIDIAN_PORT` (default `27124`), `OBSIDIAN_PROTOCOL` (`https` default, or `http`), `OBSIDIAN_VERIFY_TLS` (`true` to verify the certificate), and `OBSIDIAN_CA_CERT` (a path to the plugin's certificate from `GET /obsidian-local-rest-api.crt`, for verified TLS without disabling checks).
+
+**Per-vault endpoints (personal + team brains).** The Local REST API serves only the vault Obsidian currently has open, so to reach several brains at once, run an Obsidian instance per vault (each with the plugin enabled on its own port) and give `teambrain-mcp` a JSON config at `$TEAMBRAIN_MCP_CONFIG` (else `$XDG_CONFIG_HOME/teambrain/mcp.json`):
+
+```json
+{
+  "default": "personal",
+  "vaults": {
+    "personal": { "api_key": "<key>", "port": 27124 },
+    "eng":      { "api_key": "<key>", "port": 27125, "ca_cert": "/path/to/eng.crt" }
+  }
+}
+```
+
+Each tool then accepts a `vault` argument to choose the brain (`search_brain` with `{"vault": "eng"}`); omit it to use the `default`. `list_vaults` reports the configured names. When the config file is absent, `teambrain-mcp` falls back to the single-vault `OBSIDIAN_*` environment described above.
 
 ## Backends: fs vs Obsidian
 
@@ -360,6 +400,8 @@ Nothing is locked in.
 | `no team vaults bound` / note skipped | Bind a team with `teambrain team bind <path> --name <n>`, and tag the note `teambrains: [<n>]`. |
 | `references unbound team "x"` (warning) | The note's `teambrains:` lists a team you haven't bound under that name. |
 | `team vault is not a git repository` (exit 3) | `git init` the team vault (and add a remote for `--push`). |
+| `unresolved link(s) that would dangle` (exit 1) | A promoted note links to something the team vault lacks. Also-tag the target, fix the link, or pass `commit-sync --force`. |
+| `commit-sync … needs confirmation` (exit 1) | Run it interactively and answer the prompt, or pass `--yes` (needed under `--json`). |
 | `is ambiguous; found in ...` (exit 1) | Pass `--from <label>` to pick a source. |
 | `not a teambrain-owned capability` (exit 1) | You can only `uninstall` what teambrain installed; check `… list`. |
 | `doctor` reports drift | An owned file changed since install — re-`update` it, or investigate possible tampering. |

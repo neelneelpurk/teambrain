@@ -137,9 +137,62 @@ func TestSyncCommandsViaCLI(t *testing.T) {
 		t.Fatalf("view-sync should flag the dangling link:\n%s", stdout.String())
 	}
 
-	// Dry-run commit-sync needs no git repo.
-	if code, out, _ := runRoot(t, "--dry-run", "commit-sync", "--vault", personal); code != 0 {
-		t.Fatalf("commit-sync dry-run exit=%d out=%s", code, out.String())
+	// The note's links dangle in the team vault, so commit-sync is refused
+	// without --force (exit 1, naming the dangling link).
+	code, _, stderr := runRoot(t, "--dry-run", "commit-sync", "--vault", personal)
+	if code != 1 {
+		t.Fatalf("commit-sync without --force should be blocked, exit=%d", code)
+	}
+	if !strings.Contains(stderr.String(), "private") {
+		t.Fatalf("link-gate error should name the dangling link:\n%s", stderr.String())
+	}
+
+	// With --force, dry-run commit-sync needs no git repo and no confirmation.
+	if code, out, _ := runRoot(t, "--dry-run", "commit-sync", "--force", "--vault", personal); code != 0 {
+		t.Fatalf("forced commit-sync dry-run exit=%d out=%s", code, out.String())
+	}
+}
+
+// TestCommitSyncConfirmsBeforeWriting locks in that commit-sync — which writes
+// to shared team repos — never does so without confirmation. Both the abort and
+// the --json paths short-circuit before any git work, so no real repo is needed.
+func TestCommitSyncConfirmsBeforeWriting(t *testing.T) {
+	base := t.TempDir()
+	personal := filepath.Join(base, "personal")
+	team := filepath.Join(base, "team")
+	for _, args := range [][]string{{"init", personal}, {"team", "init", team}, {"team", "bind", team, "--name", "eng", "--vault", personal}} {
+		if code, _, e := runRoot(t, args...); code != 0 {
+			t.Fatalf("setup %v: %s", args, e.String())
+		}
+	}
+	// A clean note (no dangling links) tagged for eng.
+	note := "---\nteambrains: [eng]\nteambrain_dest: adrs/clean.md\n---\n# Clean\n"
+	if err := os.WriteFile(filepath.Join(personal, "projects", "clean.md"), []byte(note), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, e := runRoot(t, "create-sync", "projects/clean.md", "--vault", personal); code != 0 {
+		t.Fatalf("create-sync: %s", e.String())
+	}
+
+	// Empty stdin + no --yes → abort, write nothing, exit 0.
+	code, _, stderr := runRoot(t, "commit-sync", "--vault", personal)
+	if code != 0 {
+		t.Fatalf("aborted commit-sync should exit 0, got %d (%s)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "aborted") {
+		t.Fatalf("expected an abort message:\n%s", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(team, "adrs", "clean.md")); !os.IsNotExist(err) {
+		t.Fatal("aborted commit-sync must not write to the team vault")
+	}
+
+	// Machine mode refuses without --yes rather than blocking on a prompt.
+	jcode, jout, _ := runRoot(t, "--json", "commit-sync", "--vault", personal)
+	if jcode != 1 {
+		t.Fatalf("--json commit-sync without --yes should be a user error, exit=%d", jcode)
+	}
+	if !strings.Contains(jout.String(), "confirmation") {
+		t.Fatalf("--json error should mention confirmation:\n%s", jout.String())
 	}
 }
 

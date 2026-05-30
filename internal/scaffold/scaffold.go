@@ -48,8 +48,17 @@ and the filesystem cannot do safely on their own.
 
 ## Promotion
 
-Use ` + "`teambrain create-sync`, `view-sync`, and `commit-sync`" + ` to promote
-notes to the bound team vault. Links are checked before anything is committed.
+First bind a team brain (once):
+
+` + "```sh" + `
+teambrain team bind <path|remote> --name <name>
+` + "```" + `
+
+Then tag a note for that team in its frontmatter — ` + "`teambrains: [<name>]`" + ` —
+and ask Claude Code to **promote it to the team**; the seeded ` + "`promote-to-team`" + `
+skill walks the flow. Under the hood it runs ` + "`teambrain create-sync` → `view-sync` → `commit-sync`" + `.
+commit-sync refuses links that would dangle in the team vault unless you pass
+` + "`--force`" + `, and confirms before writing to the shared repo.
 `
 
 const claudeMDTeam = `# Team brain

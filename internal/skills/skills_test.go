@@ -23,6 +23,7 @@ func TestSeedsAreValidAndIncludeScaffolders(t *testing.T) {
 		"create-teambrain-skill": false,
 		"create-teambrain-agent": false,
 		"create-teambrain-hook":  false,
+		"promote-to-team":        false,
 	}
 
 	for _, s := range seeds {

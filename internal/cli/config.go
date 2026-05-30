@@ -113,13 +113,15 @@ func LoadConfig(v *viper.Viper) (*Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
-			return nil, exit.Userf("read config file: %v", err)
+			return nil, exit.Userf("read config file: %v", err).
+				WithHint("check the config file at " + v.ConfigFileUsed())
 		}
 	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, exit.Userf("parse configuration: %v", err)
+		return nil, exit.Userf("parse configuration: %v", err).
+			WithHint("check the config file at " + v.ConfigFileUsed())
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err

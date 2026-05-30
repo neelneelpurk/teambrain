@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/neelneelpurk/teambrain/internal/exit"
 	"github.com/neelneelpurk/teambrain/internal/git"
 	"github.com/neelneelpurk/teambrain/internal/sync"
 	"github.com/neelneelpurk/teambrain/internal/vault"
@@ -150,18 +151,61 @@ func newViewSyncCommand() *cobra.Command {
 
 func newCommitSyncCommand() *cobra.Command {
 	var vaultFlag, message string
-	var push bool
+	var push, force bool
 	cmd := &cobra.Command{
 		Use:   "commit-sync",
 		Short: "Promote each team's staged payload into its vault and commit it",
-		Args:  cobra.NoArgs,
+		Long: `Copy each team's staged payload into that team vault, then stage and commit
+exactly those paths (an otherwise-dirty tree is left alone), optionally pushing.
+
+commit-sync writes to shared team repositories, so it shows what it will do and
+asks before committing — pass --yes to skip the prompt (required with --json). A
+payload whose links would dangle in the team vault is refused unless you pass
+--force; review the report with view-sync, or let the promote-to-team skill
+resolve the links for you.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := appFrom(cmd.Context())
 			p, err := buildPromoter(app, vaultFlag)
 			if err != nil {
 				return err
 			}
-			res, err := p.CommitSync(sync.CommitOptions{Message: message, Push: push, DryRun: app.Config.DryRun})
+
+			view, err := p.ViewSync()
+			if err != nil {
+				return err
+			}
+			if len(view.Teams) == 0 {
+				// Defer to the canonical "nothing staged" precondition error.
+				_, err := p.CommitSync(sync.CommitOptions{DryRun: app.Config.DryRun})
+				return err
+			}
+
+			// Link gate: refuse a payload that would dangle, unless forced.
+			if !force {
+				if blocked := teamsWithUnresolvedLinks(view); len(blocked) > 0 {
+					return commitLinkGateError(blocked)
+				}
+			}
+
+			// Writing to shared repos warrants confirmation.
+			if !app.Config.DryRun && !app.Config.Yes {
+				if app.Config.JSON {
+					return exit.Userf("commit-sync writes to shared team repos and needs confirmation").
+						WithHint("pass --yes to promote non-interactively")
+				}
+				renderCommitPreview(app.IO.Err, view, push, force)
+				ok, err := confirm(app, "Promote these notes to the team repo(s)?")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(app.IO.Err, "aborted; nothing was promoted")
+					return nil
+				}
+			}
+
+			res, err := p.CommitSync(sync.CommitOptions{Message: message, Push: push, DryRun: app.Config.DryRun, Force: force})
 			if err != nil {
 				return err
 			}
@@ -185,7 +229,51 @@ func newCommitSyncCommand() *cobra.Command {
 	cmd.Flags().StringVar(&vaultFlag, "vault", "", "personal vault path (default: current directory)")
 	cmd.Flags().StringVar(&message, "message", "", "commit message (default: templated per team)")
 	cmd.Flags().BoolVar(&push, "push", false, "push each team to its remote after committing")
+	cmd.Flags().BoolVar(&force, "force", false, "promote even if links would dangle in the team vault")
 	return cmd
+}
+
+// teamsWithUnresolvedLinks returns the team views whose payload carries links
+// that would dangle in the team vault.
+func teamsWithUnresolvedLinks(view *sync.ViewResult) []sync.TeamView {
+	var blocked []sync.TeamView
+	for _, tv := range view.Teams {
+		if len(tv.LinkIssues) > 0 {
+			blocked = append(blocked, tv)
+		}
+	}
+	return blocked
+}
+
+// commitLinkGateError renders a refused promotion with the dangling links and
+// the override hint.
+func commitLinkGateError(blocked []sync.TeamView) error {
+	var b strings.Builder
+	b.WriteString("refusing to promote: links would dangle in the team vault:")
+	for _, tv := range blocked {
+		for _, li := range tv.LinkIssues {
+			fmt.Fprintf(&b, "\n  %s: %s → [[%s]]", tv.Team, li.Note, li.Link)
+		}
+	}
+	return exit.Userf("%s", b.String()).
+		WithHint("resolve them (the promote-to-team skill can help), or pass --force to promote anyway")
+}
+
+// renderCommitPreview summarizes, on w, what commit-sync is about to do so the
+// user can confirm with full knowledge.
+func renderCommitPreview(w io.Writer, view *sync.ViewResult, push, force bool) {
+	for _, tv := range view.Teams {
+		fmt.Fprintf(w, "team %s — %d note(s):\n", tv.Team, len(tv.Items))
+		for _, it := range tv.Items {
+			fmt.Fprintf(w, "  %-10s %s\n", it.Status, it.Dest)
+		}
+		if force && len(tv.LinkIssues) > 0 {
+			fmt.Fprintf(w, "  warning: %d link(s) will dangle (forced)\n", len(tv.LinkIssues))
+		}
+	}
+	if push {
+		fmt.Fprintln(w, "then push each team to its remote")
+	}
 }
 
 // indent prefixes every line of s with prefix.

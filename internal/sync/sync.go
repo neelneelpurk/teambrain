@@ -97,6 +97,9 @@ type CommitOptions struct {
 	Message string
 	Push    bool
 	DryRun  bool
+	// Force promotes a team's payload even when it carries links that would
+	// dangle in that team vault. Without it, such a payload is refused.
+	Force bool
 }
 
 // TeamCommit reports a commit-sync for one team.
@@ -119,12 +122,24 @@ type CommitResult struct {
 // promoted copy. Originals are untouched. References to unbound teams, and
 // explicitly-named notes without a `teambrains:` property, are reported as
 // warnings.
+//
+// A whole-vault scan recomputes the entire promotion set, so it first clears any
+// prior staging — otherwise a note that was untagged or had its destination
+// changed would leave an orphaned staged copy that commit-sync would still
+// promote. Explicit paths are additive: they stage onto whatever is already
+// there.
 func (p *Promoter) CreateSync(paths []string, dryRun bool) (*CreateResult, error) {
 	res := &CreateResult{Staged: []StagedItem{}, Warnings: []string{}}
 
 	notes, explicit, err := p.selectNotes(paths)
 	if err != nil {
 		return nil, err
+	}
+	if !explicit && !dryRun {
+		// Remove tolerates a missing path, so this is safe on a first run.
+		if err := p.personal.Remove(stageDir); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, src := range notes {
@@ -213,19 +228,9 @@ func (p *Promoter) ViewSync() (*ViewResult, error) {
 		}
 
 		tv := TeamView{Team: name, Items: []ViewItem{}, LinkIssues: []LinkIssue{}}
-		known, err := knownNotes(target.Vault)
-		if err != nil {
-			return nil, err
-		}
 		prefix := path.Join(stageDir, name) + "/"
-		dests := make([]string, len(staged))
-		for i, s := range staged {
-			dests[i] = strings.TrimPrefix(s, prefix)
-			addKnown(known, dests[i])
-		}
-
-		for i, s := range staged {
-			dest := dests[i]
+		for _, s := range staged {
+			dest := strings.TrimPrefix(s, prefix)
 			content, err := p.personal.Read(s)
 			if err != nil {
 				return nil, err
@@ -243,10 +248,12 @@ func (p *Promoter) ViewSync() (*ViewResult, error) {
 				item.Diff = lineDiff(splitLines(existing), splitLines(content))
 			}
 			tv.Items = append(tv.Items, item)
-			for _, link := range vault.UnresolvedLinks(content, known) {
-				tv.LinkIssues = append(tv.LinkIssues, LinkIssue{Note: dest, Link: link})
-			}
 		}
+		issues, err := p.teamLinkIssues(name)
+		if err != nil {
+			return nil, err
+		}
+		tv.LinkIssues = append(tv.LinkIssues, issues...)
 		res.Teams = append(res.Teams, tv)
 	}
 	return res, nil
@@ -279,7 +286,23 @@ func (p *Promoter) CommitSync(opts CommitOptions) (*CommitResult, error) {
 		plans = append(plans, plan{name: name, dests: dests})
 	}
 	if len(plans) == 0 {
-		return nil, exit.Preconditionf("nothing staged").WithHint("run `teambrain create-sync` first")
+		return nil, exit.Preconditionf("nothing staged").
+			WithHint("stage notes with `teambrain create-sync` (or ask Claude Code to run the promote-to-team skill) first")
+	}
+
+	// Link-integrity gate: refuse a team's payload that would leave dangling
+	// links in that team vault, unless the caller forces it. This is the
+	// deterministic backstop behind the view-sync report.
+	if !opts.Force {
+		for _, pl := range plans {
+			issues, err := p.teamLinkIssues(pl.name)
+			if err != nil {
+				return nil, err
+			}
+			if len(issues) > 0 {
+				return nil, linkGateError(pl.name, issues)
+			}
+		}
 	}
 
 	// Pre-check: every team with content must be a git repo (fail before writing).
@@ -287,7 +310,8 @@ func (p *Promoter) CommitSync(opts CommitOptions) (*CommitResult, error) {
 		for _, pl := range plans {
 			root := p.teams[pl.name].Vault.Root()
 			if !p.git.IsRepo(root) {
-				return nil, exit.Externalf("team %q vault is not a git repository: %s", pl.name, root)
+				return nil, exit.Externalf("team %q vault is not a git repository: %s", pl.name, root).
+					WithHint("run `git init` in that vault (and add a remote to use --push)")
 			}
 		}
 	}
@@ -322,7 +346,8 @@ func (p *Promoter) CommitSync(opts CommitOptions) (*CommitResult, error) {
 			}
 			if opts.Push {
 				if err := p.git.Push(root); err != nil {
-					return res, exit.Externalf("git push (%s): %v", pl.name, err)
+					return res, exit.Externalf("git push (%s): %v", pl.name, err).
+						WithHint("check the team vault's git remote and your push credentials")
 				}
 				tc.Pushed = true
 			}
@@ -368,9 +393,61 @@ func dedupe(in []string) []string {
 func validateDest(dest string) error {
 	clean := path.Clean(dest)
 	if path.IsAbs(dest) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
-		return exit.Userf("invalid promotion destination %q", dest)
+		return exit.Userf("invalid promotion destination %q: must be a relative path inside the team vault", dest).
+			WithHint("fix the note's `teambrain_dest:` frontmatter")
 	}
 	return nil
+}
+
+// teamLinkIssues returns the wikilinks in a team's staged payload that would not
+// resolve in that team vault — a link resolves if its target already exists in
+// the team vault or is part of the same staged payload. It is the single source
+// of truth behind both the view-sync report and the commit-sync gate.
+func (p *Promoter) teamLinkIssues(name string) ([]LinkIssue, error) {
+	target, ok := p.teams[name]
+	if !ok {
+		return nil, nil
+	}
+	staged, err := p.personal.ListNotes(path.Join(stageDir, name))
+	if err != nil {
+		return nil, err
+	}
+	if len(staged) == 0 {
+		return nil, nil
+	}
+	known, err := knownNotes(target.Vault)
+	if err != nil {
+		return nil, err
+	}
+	prefix := path.Join(stageDir, name) + "/"
+	dests := make([]string, len(staged))
+	for i, s := range staged {
+		dests[i] = strings.TrimPrefix(s, prefix)
+		addKnown(known, dests[i])
+	}
+	var issues []LinkIssue
+	for i, s := range staged {
+		content, err := p.personal.Read(s)
+		if err != nil {
+			return nil, err
+		}
+		for _, link := range vault.UnresolvedLinks(content, known) {
+			issues = append(issues, LinkIssue{Note: dests[i], Link: link})
+		}
+	}
+	return issues, nil
+}
+
+// linkGateError reports a refused promotion: links that would dangle in the team
+// vault, with the override hint.
+func linkGateError(team string, issues []LinkIssue) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "team %q has %d unresolved link(s) that would dangle after promotion:", team, len(issues))
+	for _, li := range issues {
+		fmt.Fprintf(&b, "\n  %s → [[%s]]", li.Note, li.Link)
+	}
+	return exit.Userf("%s", b.String()).
+		WithHint("also-tag the targets, inline them, or fix the links — or pass --force to promote anyway")
 }
 
 func defaultMessage(team string, dests []string) string {

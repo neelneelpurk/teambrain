@@ -22,7 +22,14 @@ func newImportCommand(noun string, kind capability.Kind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import <name>",
 		Short: fmt.Sprintf("Copy %s %s from a vault into this repo's .claude", article(noun), noun),
-		Args:  cobra.ExactArgs(1),
+		Long: fmt.Sprintf(`Copy %s %s authored in a vault into this repo's .claude, recording ownership so
+it can later be updated or cleanly removed.
+
+Sources come from --source (repeatable) or the personal_vault set in config (its
+bound team vaults are searched too). If the name exists in more than one source,
+pass --from <label> to choose. Hooks run code, so importing one shows the script
+and asks first (--yes to skip).`, article(noun), noun),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := appFrom(cmd.Context())
 			srcs, err := resolveSources(app, sources)
@@ -73,7 +80,7 @@ func newImportCommand(noun string, kind capability.Kind) *cobra.Command {
 	cmd.Flags().StringVar(&dir, "dir", ".", "target directory containing .claude")
 	cmd.Flags().StringArrayVar(&sources, "source", nil, "candidate source vault path (repeatable)")
 	cmd.Flags().StringVar(&from, "from", "", "disambiguate by source label")
-	cmd.Flags().StringVar(&mode, "mode", "copy", "import mode: copy or link")
+	cmd.Flags().StringVar(&mode, "mode", "copy", "copy (snapshot) or link (symlink that tracks the source; skipped on Windows)")
 	return cmd
 }
 

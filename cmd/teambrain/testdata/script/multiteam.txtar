@@ -37,8 +37,8 @@ exec teambrain create-sync --vault $WORK/personal
 exists $WORK/personal/_sync/eng/projects/shared.md
 exists $WORK/personal/_sync/design/projects/shared.md
 
-# Commit fans out to both team repos.
-exec teambrain commit-sync --vault $WORK/personal
+# Commit fans out to both team repos (--yes skips the shared-repo confirmation).
+exec teambrain commit-sync --yes --vault $WORK/personal
 exists $WORK/eng/projects/shared.md
 exists $WORK/design/projects/shared.md
 exec git -C $WORK/eng log --name-only -1

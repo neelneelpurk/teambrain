@@ -17,7 +17,7 @@ const (
 	retrievalCLI  = "obsidian-cli"
 	retrievalNone = "unavailable"
 
-	retrievalSetupHint = "install the Obsidian CLI or configure an Obsidian MCP in Claude Code (the search-brain skill needs it)"
+	retrievalSetupHint = "run the bundled teambrain-mcp (or another Obsidian MCP), or install the Obsidian CLI — the search-brain skill needs one"
 )
 
 // detectObsidianCLI reports whether the Obsidian CLI is on PATH.

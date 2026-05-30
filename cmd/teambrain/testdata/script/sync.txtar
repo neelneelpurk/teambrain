@@ -24,8 +24,15 @@ exec teambrain --json view-sync --vault $WORK/personal
 stdout '"team": "eng"'
 stdout 'private-thoughts'
 
-# commit-sync promotes into the team vault and commits only that file.
-exec teambrain commit-sync --vault $WORK/personal
+# The note has a link that would dangle in the team vault, so commit-sync is
+# refused without --force — the link gate is real, not just a report.
+! exec teambrain commit-sync --yes --vault $WORK/personal
+stderr 'dangle'
+exists $WORK/personal/_sync/eng/adrs/0001.md
+
+# With --force (and --yes to skip the shared-repo confirmation) it promotes and
+# commits only that file.
+exec teambrain commit-sync --force --yes --vault $WORK/personal
 exists $WORK/team/adrs/0001.md
 ! exists $WORK/personal/_sync/eng/adrs/0001.md
 exec git -C $WORK/team log --name-only -1
