@@ -146,9 +146,9 @@ Plain vaults, plain git repos — no submodules, no symlinks. Links don't cross 
 | `teambrain create-sync [path]...` | Stage tagged notes for promotion (scans the vault if no paths) |
 | `teambrain view-sync` | Preview each team's payload with a diff and link-integrity report |
 | `teambrain commit-sync [--push] [--force] [--yes]` | Promote each note to every tagged team, committing those files (confirms first; `--force` overrides the link gate) |
-| `teambrain doctor` | Report the active backend and check for capability tamper |
+| `teambrain doctor` | Report the brain-retrieval path and check for capability tamper |
 
-**Global flags:** `--vault-backend fs\|obsidian\|auto` · `--json` · `--dry-run` · `--yes` · `--verbose/-v` · `--quiet` · `--no-color`
+**Global flags:** `--json` · `--dry-run` · `--yes` · `--verbose/-v` · `--quiet` · `--no-color`
 
 ### Exit codes
 
@@ -185,13 +185,11 @@ teambrain --json skill list | jq '.data.capabilities[].name'
 - **Nothing is written outside a vault.** Path containment is enforced on every write.
 - **`uninstall` is exact.** It removes only teambrain-owned files and the matching `settings.json` entry, leaving the repo byte-identical otherwise.
 
-## Backends
+## Vault access
 
-- **`fs` (default, always available)** reads and writes vault files directly.
-- **`obsidian`** routes operations through the [Obsidian CLI](https://help.obsidian.md), whose decisive advantage is a **link-preserving move** using Obsidian's own resolver.
-- **`auto`** picks `obsidian` when its CLI is detected, otherwise `fs`, and logs the choice. If you write directly to a live vault while Obsidian is running, teambrain warns about the desync risk.
+teambrain reads and writes vault files **directly on disk**, with path containment enforced on every write — nothing is ever written outside the vault it was given. There is no app-mediated backend: uninstall teambrain and the same plain files remain, openable in Obsidian, git, and Claude Code.
 
-### Retrieval (via Obsidian)
+## Retrieval (via Obsidian)
 
 Finding the right notes is **Obsidian's job**. Its live index, search, backlinks, and link resolver beat anything teambrain would reimplement — and they need no other LLM API. So teambrain **requires Obsidian for retrieval** (an Obsidian MCP, preferred, or the Obsidian CLI) and ships a `search-brain` skill that teaches Claude Code to use it: search first, fetch only what's needed, follow backlinks, cite `note#heading`, and never guess from filenames. `teambrain doctor` reports the active retrieval path (`obsidian-mcp` / `obsidian-cli` / `unavailable`) and `init` warns loudly if neither is present. teambrain does **not** reimplement search.
 

@@ -25,14 +25,10 @@ func TestMain(m *testing.M) {
 }
 
 // TestScripts runs every testdata/script/*.txtar end-to-end against the CLI.
-// The fs backend is forced so scripts are deterministic regardless of whether a
-// real Obsidian CLI is installed on the host.
+// teambrain reads and writes vaults directly, so scripts are deterministic
+// regardless of whether a real Obsidian CLI is installed on the host.
 func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/script",
-		Setup: func(e *testscript.Env) error {
-			e.Setenv("TEAMBRAIN_VAULT_BACKEND", "fs")
-			return nil
-		},
 	})
 }

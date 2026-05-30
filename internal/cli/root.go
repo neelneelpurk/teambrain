@@ -30,13 +30,12 @@ and plain .claude/ skills. Nothing is locked in.`
 
 // flagToKey maps a persistent flag name to its configuration key.
 var flagToKey = map[string]string{
-	"vault-backend": "vault_backend",
-	"json":          "json",
-	"dry-run":       "dry_run",
-	"yes":           "yes",
-	"verbose":       "verbose",
-	"quiet":         "quiet",
-	"no-color":      "no_color",
+	"json":     "json",
+	"dry-run":  "dry_run",
+	"yes":      "yes",
+	"verbose":  "verbose",
+	"quiet":    "quiet",
+	"no-color": "no_color",
 }
 
 // newRootCommand builds the root command and the *App threaded through it.
@@ -72,7 +71,6 @@ func newRootCommand(stdio IO, build BuildInfo) (*cobra.Command, *App) {
 	root.SetErr(stdio.Err)
 
 	pf := root.PersistentFlags()
-	pf.String("vault-backend", "", "vault access backend: fs|obsidian|auto")
 	pf.Bool("json", false, "emit machine-readable JSON")
 	pf.Bool("dry-run", false, "show what would change without writing")
 	pf.Bool("yes", false, "assume yes; skip confirmation prompts")

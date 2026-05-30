@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -11,8 +12,7 @@ import (
 // exit code and the stdout/stderr buffers.
 func runRoot(t *testing.T, args ...string) (code int, stdout, stderr *bytes.Buffer) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())  // isolate from the real user config
-	t.Setenv("TEAMBRAIN_VAULT_BACKEND", "fs") // deterministic regardless of a host Obsidian
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // isolate from the real user config
 	stdout = &bytes.Buffer{}
 	stderr = &bytes.Buffer{}
 	io := IO{In: strings.NewReader(""), Out: stdout, Err: stderr}
@@ -56,19 +56,10 @@ func TestUnknownCommandIsUserError(t *testing.T) {
 	}
 }
 
-func TestInvalidBackendFlagIsUserError(t *testing.T) {
-	code, _, stderr := runRoot(t, "--vault-backend", "sqlite", "doctor")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stderr.String(), "vault_backend") && !strings.Contains(stderr.String(), "vault-backend") {
-		t.Fatalf("error should mention the backend, got %q", stderr.String())
-	}
-}
-
 func TestJSONErrorEnvelopeOnStdout(t *testing.T) {
-	// A precondition failure under --json should emit a structured envelope.
-	code, stdout, _ := runRoot(t, "--json", "--vault-backend", "bogus", "doctor")
+	// A user error under --json should emit a structured envelope on stdout.
+	// `init` with no path and no --here is the simplest such error.
+	code, stdout, _ := runRoot(t, "--json", "init")
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -85,20 +76,14 @@ func TestJSONErrorEnvelopeOnStdout(t *testing.T) {
 }
 
 func TestPersistentFlagsResolveIntoConfig(t *testing.T) {
-	// doctor echoes the resolved backend as JSON data; assert the flag wins.
-	code, stdout, _ := runRoot(t, "--json", "--vault-backend", "fs", "doctor")
+	// A persistent flag must resolve into Config and change behavior: --dry-run
+	// makes init report what it "would create" instead of writing.
+	dir := filepath.Join(t.TempDir(), "brain")
+	code, stdout, _ := runRoot(t, "init", "--dry-run", dir)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stdout=%s", code, stdout.String())
 	}
-	var env Envelope
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout.String())
-	}
-	data, _ := env.Data.(map[string]any)
-	if data["vault_backend"] != "fs" {
-		t.Fatalf("vault_backend = %v, want fs", data["vault_backend"])
-	}
-	if data["active_backend"] != "fs" {
-		t.Fatalf("active_backend = %v, want fs (flag forces fs)", data["active_backend"])
+	if !strings.Contains(stdout.String(), "would create") {
+		t.Fatalf("--dry-run should resolve into Config and yield a dry-run report, got:\n%s", stdout.String())
 	}
 }

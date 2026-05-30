@@ -8,13 +8,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/neelneelpurk/teambrain/internal/capability"
-	"github.com/neelneelpurk/teambrain/internal/vault"
 )
 
-// newDoctorCommand returns `teambrain doctor`: it reports the active vault
-// backend, checks teambrain-owned capabilities for checksum drift (tamper
-// detection), and — read-only — reminds you to configure an Obsidian MCP for
-// retrieval if none is detected.
+// newDoctorCommand returns `teambrain doctor`: it checks teambrain-owned
+// capabilities for checksum drift (tamper detection) and — read-only — reports
+// the brain-retrieval path, reminding you to configure an Obsidian MCP if none
+// is available.
 func newDoctorCommand() *cobra.Command {
 	var dir string
 	cmd := &cobra.Command{
@@ -24,9 +23,6 @@ func newDoctorCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := appFrom(cmd.Context())
 
-			detected := vault.DetectObsidian()
-			active := activeBackend(app.Config.VaultBackend, detected)
-
 			drift, err := capability.OpenStore(filepath.Join(dir, ".claude")).CheckDrift()
 			if err != nil {
 				return err
@@ -34,9 +30,6 @@ func newDoctorCommand() *cobra.Command {
 			retrieval, retrievalOK := retrievalStatus(dir)
 
 			data := map[string]any{
-				"vault_backend":       app.Config.VaultBackend,
-				"obsidian_detected":   detected,
-				"active_backend":      active,
 				"healthy":             len(drift) == 0,
 				"drift":               drift,
 				"retrieval":           retrieval,
@@ -44,50 +37,22 @@ func newDoctorCommand() *cobra.Command {
 			}
 
 			return app.Emit("doctor", data, func(w io.Writer) {
-				fmt.Fprintf(w, "vault backend: %s (active: %s)\n", app.Config.VaultBackend, active)
-				fmt.Fprintf(w, "obsidian CLI:  %s\n", detectedLabel(detected))
 				if len(drift) == 0 {
-					fmt.Fprintln(w, "ownership:     OK (no checksum drift)")
+					fmt.Fprintln(w, "ownership:  OK (no checksum drift)")
 				} else {
-					fmt.Fprintf(w, "ownership:     %d capability(ies) drifted — possible tamper:\n", len(drift))
+					fmt.Fprintf(w, "ownership:  %d capability(ies) drifted — possible tamper:\n", len(drift))
 					for _, d := range drift {
 						fmt.Fprintf(w, "  - %s (%s): %s\n", d.Name, d.File, d.Reason)
 					}
 				}
 				if retrievalOK {
-					fmt.Fprintf(w, "retrieval:     %s (live)\n", retrieval)
+					fmt.Fprintf(w, "retrieval:  %s (live)\n", retrieval)
 				} else {
-					fmt.Fprintf(w, "retrieval:     UNAVAILABLE — %s\n", retrievalSetupHint)
+					fmt.Fprintf(w, "retrieval:  UNAVAILABLE — %s\n", retrievalSetupHint)
 				}
 			})
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "directory whose .claude to inspect for drift")
 	return cmd
-}
-
-// activeBackend reports which backend would actually be used given the
-// configured preference and whether Obsidian was detected.
-func activeBackend(pref string, detected bool) string {
-	switch pref {
-	case string(vault.BackendObsidian):
-		if detected {
-			return "obsidian"
-		}
-		return "fs"
-	case string(vault.BackendAuto):
-		if detected {
-			return "obsidian"
-		}
-		return "fs"
-	default:
-		return "fs"
-	}
-}
-
-func detectedLabel(detected bool) string {
-	if detected {
-		return "detected"
-	}
-	return "not detected"
 }

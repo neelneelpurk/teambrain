@@ -2,8 +2,8 @@
 ! exec teambrain frobnicate
 stderr 'Error:'
 
-# Invalid backend is a user error; under --json the envelope lands on stdout.
+# A user error under --json lands a structured envelope on stdout.
 env XDG_CONFIG_HOME=$WORK/cfg
-! exec teambrain --json --vault-backend sqlite doctor
+! exec teambrain --json init
 stdout '"ok": false'
 stdout '"code": 1'

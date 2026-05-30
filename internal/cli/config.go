@@ -12,34 +12,13 @@ import (
 )
 
 // EnvPrefix is the prefix for all teambrain environment variables, e.g.
-// TEAMBRAIN_VAULT_BACKEND.
+// TEAMBRAIN_PERSONAL_VAULT.
 const EnvPrefix = "TEAMBRAIN"
-
-// Backend names a vault access strategy.
-type Backend string
-
-const (
-	// BackendFS reads and writes vault files directly on disk. Always available.
-	BackendFS Backend = "fs"
-	// BackendObsidian routes operations through the Obsidian CLI for
-	// link-preserving moves and richer queries. Requires a running Obsidian.
-	BackendObsidian Backend = "obsidian"
-	// BackendAuto picks obsidian when detected, otherwise fs.
-	BackendAuto Backend = "auto"
-)
-
-// validBackends is the closed set accepted for vault_backend.
-var validBackends = map[string]bool{
-	string(BackendFS):       true,
-	string(BackendObsidian): true,
-	string(BackendAuto):     true,
-}
 
 // configKeys lists every configuration key. Each is bound to an environment
 // variable so that Unmarshal observes env overrides (Viper's AutomaticEnv alone
 // does not feed Unmarshal reliably).
 var configKeys = []string{
-	"vault_backend",
 	"json",
 	"dry_run",
 	"yes",
@@ -52,13 +31,12 @@ var configKeys = []string{
 // Config is the fully resolved global configuration after applying precedence:
 // explicit flags > environment (TEAMBRAIN_*) > config file > defaults.
 type Config struct {
-	VaultBackend string `mapstructure:"vault_backend"`
-	JSON         bool   `mapstructure:"json"`
-	DryRun       bool   `mapstructure:"dry_run"`
-	Yes          bool   `mapstructure:"yes"`
-	Verbose      bool   `mapstructure:"verbose"`
-	Quiet        bool   `mapstructure:"quiet"`
-	NoColor      bool   `mapstructure:"no_color"`
+	JSON    bool `mapstructure:"json"`
+	DryRun  bool `mapstructure:"dry_run"`
+	Yes     bool `mapstructure:"yes"`
+	Verbose bool `mapstructure:"verbose"`
+	Quiet   bool `mapstructure:"quiet"`
+	NoColor bool `mapstructure:"no_color"`
 	// PersonalVault, when set, is the personal-brain vault path. import uses it
 	// (and its bound team vault) as default capability sources.
 	PersonalVault string `mapstructure:"personal_vault"`
@@ -95,7 +73,6 @@ func NewViper() *viper.Viper {
 		_ = v.BindEnv(key)
 	}
 
-	v.SetDefault("vault_backend", string(BackendAuto))
 	v.SetDefault("json", false)
 	v.SetDefault("dry_run", false)
 	v.SetDefault("yes", false)
@@ -107,8 +84,8 @@ func NewViper() *viper.Viper {
 	return v
 }
 
-// LoadConfig reads the config file (if present), applies env overrides, and
-// returns a validated Config. A missing config file is not an error.
+// LoadConfig reads the config file (if present) and applies env overrides. A
+// missing config file is not an error.
 func LoadConfig(v *viper.Viper) (*Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -123,17 +100,5 @@ func LoadConfig(v *viper.Viper) (*Config, error) {
 		return nil, exit.Userf("parse configuration: %v", err).
 			WithHint("check the config file at " + v.ConfigFileUsed())
 	}
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
 	return &cfg, nil
-}
-
-// Validate checks invariants that the type system cannot.
-func (c *Config) Validate() error {
-	if !validBackends[c.VaultBackend] {
-		return exit.Userf("invalid vault_backend %q: want one of fs, obsidian, auto", c.VaultBackend).
-			WithHint("set --vault-backend, TEAMBRAIN_VAULT_BACKEND, or vault_backend in config")
-	}
-	return nil
 }
