@@ -57,7 +57,7 @@ CI additionally runs the suite on Linux, macOS, and Windows.
 | `cmd/teambrain` | entrypoint + testscript harness |
 | `internal/cli` | Cobra commands, config (Viper/XDG), the `--json` envelope, exit-code mapping |
 | `internal/exit` | stable exit codes + structured errors |
-| `internal/vault` | `Vault` interface, `fsdirect` + `obsidian` backends, frontmatter, link rewriting |
+| `internal/vault` | `Vault` interface, `fsdirect` backend, frontmatter, link rewriting |
 | `internal/capability` | authoring (`new`), inventory (`list`), distribution (`import`/`update`/`uninstall`), `settings.json` merge, drift detection |
 | `internal/manifest` | the two `.teambrain.json` schemas + read/write |
 | `internal/sync` | promotion (`create`/`view`/`commit`) + the link-integrity gate |

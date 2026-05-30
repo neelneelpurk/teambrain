@@ -32,8 +32,8 @@ func TestConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.VaultBackend != string(BackendAuto) {
-		t.Fatalf("VaultBackend = %q, want %q", cfg.VaultBackend, BackendAuto)
+	if cfg.PersonalVault != "" {
+		t.Fatalf("PersonalVault default = %q, want empty", cfg.PersonalVault)
 	}
 	if cfg.JSON || cfg.DryRun || cfg.Yes || cfg.Verbose || cfg.Quiet {
 		t.Fatalf("boolean defaults should all be false, got %+v", cfg)
@@ -41,36 +41,27 @@ func TestConfigDefaults(t *testing.T) {
 }
 
 func TestConfigFileOverridesDefault(t *testing.T) {
-	writeConfig(t, "vault_backend: obsidian\n")
+	writeConfig(t, "personal_vault: /from/file\n")
 
 	cfg, err := LoadConfig(NewViper())
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.VaultBackend != string(BackendObsidian) {
-		t.Fatalf("VaultBackend = %q, want %q (file should beat default)", cfg.VaultBackend, BackendObsidian)
+	if cfg.PersonalVault != "/from/file" {
+		t.Fatalf("PersonalVault = %q, want %q (file should beat default)", cfg.PersonalVault, "/from/file")
 	}
 }
 
 func TestConfigEnvOverridesFile(t *testing.T) {
-	writeConfig(t, "vault_backend: obsidian\n")
-	t.Setenv("TEAMBRAIN_VAULT_BACKEND", "fs")
+	writeConfig(t, "personal_vault: /from/file\n")
+	t.Setenv("TEAMBRAIN_PERSONAL_VAULT", "/from/env")
 
 	cfg, err := LoadConfig(NewViper())
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.VaultBackend != string(BackendFS) {
-		t.Fatalf("VaultBackend = %q, want %q (env should beat file)", cfg.VaultBackend, BackendFS)
-	}
-}
-
-func TestConfigInvalidBackendRejected(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("TEAMBRAIN_VAULT_BACKEND", "sqlite")
-
-	if _, err := LoadConfig(NewViper()); err == nil {
-		t.Fatal("expected an error for an unknown vault backend, got nil")
+	if cfg.PersonalVault != "/from/env" {
+		t.Fatalf("PersonalVault = %q, want %q (env should beat file)", cfg.PersonalVault, "/from/env")
 	}
 }
 

@@ -13,7 +13,7 @@ This guide walks through every teambrain workflow end to end. If you just want t
 7. [Promoting notes to the team brains](#promoting-notes-to-the-team-brains)
 8. [Hooks and safety](#hooks-and-safety)
 9. [Health checks with doctor](#health-checks-with-doctor)
-10. [Backends: fs vs Obsidian](#backends-fs-vs-obsidian)
+10. [How teambrain accesses your vault](#how-teambrain-accesses-your-vault)
 11. [Scripting with `--json`](#scripting-with---json)
 12. [Configuration](#configuration)
 13. [Uninstalling teambrain](#uninstalling-teambrain)
@@ -337,19 +337,11 @@ For a single vault, configuration is via environment variables (matching the com
 
 Each tool then accepts a `vault` argument to choose the brain (`search_brain` with `{"vault": "eng"}`); omit it to use the `default`. `list_vaults` reports the configured names. When the config file is absent, `teambrain-mcp` falls back to the single-vault `OBSIDIAN_*` environment described above.
 
-## Backends: fs vs Obsidian
+## How teambrain accesses your vault
 
-teambrain works fully without Obsidian. The optional `obsidian` backend adds a **link-preserving move** (using Obsidian's resolver instead of teambrain's documented subset) and richer queries.
+teambrain reads and writes your vault files **directly on disk** — no running Obsidian is required for any teambrain command. Path containment is enforced on every write, so nothing is ever written outside the vault you point it at. (Retrieval is the one thing teambrain leaves to Obsidian; see [Health checks with doctor](#health-checks-with-doctor).)
 
-```sh
-teambrain --vault-backend fs   ...   # always works
-teambrain --vault-backend obsidian ...   # requires the Obsidian CLI; falls back to fs with a warning
-teambrain --vault-backend auto ...       # obsidian if detected, else fs (the default)
-```
-
-If you choose `fs` while Obsidian is running on the same vault, teambrain warns that direct writes may desync the live app.
-
-The filesystem link rewriter supports a documented subset of wikilinks: `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, and full-path forms. Embeds (`![[note]]`) and block references (`[[note#^id]]`) to a moved note are **reported, not rewritten** — teambrain warns rather than risk mangling them.
+The link rewriter supports a documented subset of wikilinks: `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, and full-path forms. Embeds (`![[note]]`) and block references (`[[note#^id]]`) to a moved note are **reported, not rewritten** — teambrain warns rather than risk mangling them.
 
 ## Scripting with `--json`
 
@@ -372,11 +364,10 @@ Combine with the documented exit codes (`0/1/2/3`) to build robust automation. H
 Resolution order (highest first): **command-line flag → environment variable → config file → default.**
 
 - **Config file:** `$XDG_CONFIG_HOME/teambrain/config.yaml` (or `~/.config/teambrain/config.yaml`).
-- **Environment:** `TEAMBRAIN_<KEY>`, e.g. `TEAMBRAIN_VAULT_BACKEND=fs`.
+- **Environment:** `TEAMBRAIN_<KEY>`, e.g. `TEAMBRAIN_PERSONAL_VAULT=~/personal-brain`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `vault_backend` | `auto` | `fs`, `obsidian`, or `auto` |
 | `personal_vault` | _(unset)_ | default personal vault for `import`/sync source resolution |
 | `json` | `false` | always emit JSON |
 | `dry_run` / `yes` / `verbose` / `quiet` / `no_color` | `false` | global behavior toggles |

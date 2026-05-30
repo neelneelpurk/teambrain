@@ -3,10 +3,9 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/neelneelpurk/teambrain/internal/vault"
 )
 
 // Brain retrieval is powered by Obsidian (MCP preferred, else the CLI). teambrain
@@ -20,8 +19,13 @@ const (
 	retrievalSetupHint = "run the bundled teambrain-mcp (or another Obsidian MCP), or install the Obsidian CLI — the search-brain skill needs one"
 )
 
-// detectObsidianCLI reports whether the Obsidian CLI is on PATH.
-func detectObsidianCLI() bool { return vault.DetectObsidian() }
+// detectObsidianCLI reports whether the Obsidian CLI is on PATH. The
+// search-brain skill can drive it as a retrieval fallback when no Obsidian MCP
+// is configured; teambrain itself reads and writes vaults directly.
+func detectObsidianCLI() bool {
+	_, err := exec.LookPath("obsidian")
+	return err == nil
+}
 
 // detectObsidianMCP heuristically reports whether an Obsidian MCP server is
 // configured, by scanning .mcp.json in dir and ~/.claude.json for a server whose

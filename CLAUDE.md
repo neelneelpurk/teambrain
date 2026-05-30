@@ -60,7 +60,7 @@ needs new tests.
 | `cmd/teambrain` | entrypoint + testscript harness |
 | `internal/cli` | Cobra commands, config (Viper/XDG), `--json` envelope, exit-code mapping |
 | `internal/exit` | stable exit codes + structured errors |
-| `internal/vault` | `Vault` iface; `fsdirect` + `obsidian` backends; frontmatter; wikilinks |
+| `internal/vault` | `Vault` iface; `fsdirect` backend; frontmatter; wikilinks |
 | `internal/capability` | author (`new`), list, distribute (`import`/`update`/`uninstall`), `settings.json` merge, drift detection |
 | `internal/manifest` | the two `.teambrain.json` schemas (root + `.claude` ownership) |
 | `internal/sync` | tag-routed promotion (`create`/`view`/`commit`) + link-integrity gate |
@@ -111,11 +111,11 @@ Every boundary is an interface with an in-memory fake. Keep it that way.
 
 - **Line endings:** golden comparisons are byte-exact and CI runs on Windows.
   `.gitattributes` forces `eol=lf` — keep it; never commit CRLF fixtures.
-- **Host Obsidian skews tests:** `--vault-backend auto` picks the `obsidian` CLI
-  when it's on `PATH`, which routes vault reads/writes through the real app and
-  breaks hermetic tests. Tests force `TEAMBRAIN_VAULT_BACKEND=fs` (`runRoot`
-  helper + the testscript `Setup`). When a new test opens a vault, force `fs` or
-  inject detection (`vault.Open(backend, root, detect, warn)`).
+- **Host Obsidian skews retrieval *reporting* (not writes):** vault access is
+  always direct `fs`, so a host `obsidian` on `PATH` can't hijack reads/writes.
+  But `doctor`/`init` detect that CLI for the *retrieval* path, so a test that
+  asserts retrieval status must isolate `PATH` (`t.Setenv("PATH", t.TempDir())`)
+  — see `TestRetrievalStatus` / `TestInitWarnsWhenObsidianAbsent`.
 - **Coverage script** (`scripts/check-coverage.sh`) gates only `ok … coverage:`
   lines; the no-test helper `internal/testutil` is intentionally not gated.
 - **CRLF/path tests:** compare paths against `filepath.Abs(...)`, not Unix

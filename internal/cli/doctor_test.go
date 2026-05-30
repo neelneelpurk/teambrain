@@ -10,7 +10,7 @@ import (
 	"github.com/neelneelpurk/teambrain/internal/capability"
 )
 
-func TestDoctorReportsBackend(t *testing.T) {
+func TestDoctorReportsHealthy(t *testing.T) {
 	code, stdout, _ := runRoot(t, "--json", "doctor")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -23,8 +23,9 @@ func TestDoctorReportsBackend(t *testing.T) {
 	if data["healthy"] != true {
 		t.Fatalf("clean dir should be healthy, got %v", data)
 	}
-	if data["active_backend"] != "fs" {
-		t.Fatalf("active_backend = %v, want fs", data["active_backend"])
+	// The vault backend was removed; doctor must no longer report one.
+	if _, ok := data["vault_backend"]; ok {
+		t.Fatalf("doctor should not report a vault backend, got %v", data)
 	}
 }
 

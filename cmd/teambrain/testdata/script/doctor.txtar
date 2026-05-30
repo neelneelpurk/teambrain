@@ -1,14 +1,11 @@
-# doctor under --json emits a success envelope with the resolved backend.
+# doctor under --json emits a success envelope with the retrieval status.
 env XDG_CONFIG_HOME=$WORK/cfg
-env TEAMBRAIN_VAULT_BACKEND=auto
 exec teambrain --json doctor
 stdout '"ok": true'
 stdout '"command": "doctor"'
-stdout '"vault_backend": "auto"'
 stdout '"retrieval"'
 ! stderr .
 
-# Human mode prints a readable line, not JSON, including the retrieval path.
+# Human mode prints readable lines, not JSON, including the retrieval path.
 exec teambrain doctor
-stdout 'vault backend: auto'
 stdout 'retrieval:'

@@ -8,34 +8,6 @@ import (
 	"testing"
 )
 
-func TestActiveBackend(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		pref     string
-		detected bool
-		want     string
-	}{
-		{"fs", false, "fs"},
-		{"fs", true, "fs"},
-		{"obsidian", true, "obsidian"},
-		{"obsidian", false, "fs"},
-		{"auto", true, "obsidian"},
-		{"auto", false, "fs"},
-	}
-	for _, c := range cases {
-		if got := activeBackend(c.pref, c.detected); got != c.want {
-			t.Errorf("activeBackend(%q,%v) = %q, want %q", c.pref, c.detected, got, c.want)
-		}
-	}
-}
-
-func TestDetectedLabel(t *testing.T) {
-	t.Parallel()
-	if detectedLabel(true) != "detected" || detectedLabel(false) != "not detected" {
-		t.Fatal("detectedLabel wrong")
-	}
-}
-
 func TestRetrievalStatus(t *testing.T) {
 	// Isolate from a host Obsidian CLI and the real ~/.claude.json.
 	t.Setenv("PATH", t.TempDir())

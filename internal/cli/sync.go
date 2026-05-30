@@ -43,8 +43,7 @@ func buildPromoter(app *App, vaultFlag string) (*sync.Promoter, error) {
 		return nil, err
 	}
 
-	backend := vault.Backend(app.Config.VaultBackend)
-	personal, err := vault.Open(backend, personalPath, vault.DetectObsidian, app.Warn)
+	personal, err := vault.NewFSDirect(personalPath)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,7 @@ func buildPromoter(app *App, vaultFlag string) (*sync.Promoter, error) {
 			app.Warn("team %q is bound by remote only; clone it locally and rebind with a path to promote", b.Name)
 			continue
 		}
-		tv, err := vault.Open(backend, b.Path, vault.DetectObsidian, app.Warn)
+		tv, err := vault.NewFSDirect(b.Path)
 		if err != nil {
 			return nil, err
 		}
