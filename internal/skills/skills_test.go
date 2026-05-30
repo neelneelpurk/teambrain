@@ -91,10 +91,13 @@ func TestLibraryIsCuratedAndExcludesScaffolders(t *testing.T) {
 	}
 }
 
-// TestLibrarySkillsDriveObsidianCLI locks in the product requirement that every
-// embedded library skill leans on the Obsidian CLI to find relevant files and
-// get things done — not generic guidance.
-func TestLibrarySkillsDriveObsidianCLI(t *testing.T) {
+// TestLibrarySkillsRouteRetrievalThroughSearchBrain locks in the retrieval
+// contract: search-brain is the single source of truth for *how* to read the
+// vault (Obsidian MCP preferred, the CLI as a fallback). Every other library
+// skill that needs vault context must delegate to it by name instead of
+// hardcoding `obsidian --help` — that CLI-first invocation inverts the
+// documented MCP-first priority and pins the prompt to a brittle CLI contract.
+func TestLibrarySkillsRouteRetrievalThroughSearchBrain(t *testing.T) {
 	t.Parallel()
 
 	lib, err := Library()
@@ -103,11 +106,24 @@ func TestLibrarySkillsDriveObsidianCLI(t *testing.T) {
 	}
 	for _, e := range lib {
 		body := strings.ToLower(string(e.Content))
-		if !strings.Contains(body, "obsidian") {
-			t.Errorf("library skill %q does not reference Obsidian", e.Name)
+
+		if e.Name == "search-brain" {
+			// search-brain *is* the contract, so it alone names the concrete
+			// retrieval tools — both paths, MCP before the CLI.
+			if !strings.Contains(body, "obsidian mcp") || !strings.Contains(body, "obsidian cli") {
+				t.Errorf("search-brain must name both the Obsidian MCP and CLI retrieval paths")
+			}
+			continue
 		}
-		if !strings.Contains(body, "obsidian --help") && !strings.Contains(body, "obsidian cli") {
-			t.Errorf("library skill %q should point at the Obsidian CLI concretely", e.Name)
+
+		// Every work skill delegates retrieval to search-brain by name...
+		if !strings.Contains(body, "search-brain") {
+			t.Errorf("library skill %q must route retrieval through the search-brain skill", e.Name)
+		}
+		// ...and must not re-pin itself to the CLI-first invocation that
+		// inverts the MCP-preferred contract.
+		if strings.Contains(body, "obsidian --help") {
+			t.Errorf("library skill %q hardcodes `obsidian --help`; delegate to search-brain instead", e.Name)
 		}
 	}
 }

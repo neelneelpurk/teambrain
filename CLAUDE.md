@@ -103,8 +103,13 @@ Every boundary is an interface with an in-memory fake. Keep it that way.
   props** from the promoted copy; `commit-sync` fans out per team.
 - **Embedded skills:** `internal/skills/assets/{scaffold,library}/<name>/SKILL.md`.
   All are seeded by `init`; `library/` is also the `skill catalog`/`skill add`
-  set. Every library skill must drive the Obsidian CLI to find files —
-  `TestLibrarySkillsDriveObsidianCLI` enforces it.
+  set. **Retrieval has one owner:** `search-brain` encodes the contract (Obsidian
+  MCP preferred, CLI fallback, STOP otherwise); every other library skill
+  delegates its "find the notes" step to `search-brain` by name rather than
+  hardcoding an `obsidian --help`/CLI invocation that would invert the priority —
+  `TestLibrarySkillsRouteRetrievalThroughSearchBrain` enforces it. The generated
+  vault `CLAUDE.md` repeats the same contract as an ambient rule (see
+  `internal/scaffold/scaffold.go`'s `claudeMDRetrieval`).
 - **Manifests are authoritative plain JSON.** Any cache is derived/disposable.
 
 ## Gotchas (these have bitten us)

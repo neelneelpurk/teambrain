@@ -30,6 +30,24 @@ var teamContentDirs = []string{"adrs", "design-docs", "runbooks", "conventions",
 // claudeDirs are the capability folders that start empty (so they get a .gitkeep).
 var claudeDirs = []string{".claude/agents", ".claude/hooks", ".claude/commands"}
 
+// claudeMDRetrieval is the ambient retrieval contract appended to every
+// generated vault CLAUDE.md. It makes "retrieve before answering, via the
+// search-brain skill" a rule for every Claude Code session — not only when a
+// skill happens to trigger. search-brain owns the actual tool choice (Obsidian
+// MCP preferred, else the CLI), so this stays the one place the contract lives.
+const claudeMDRetrieval = `
+## For Claude Code
+
+This vault is a knowledge base, not a scratchpad. Before answering anything that
+depends on what's stored here — past decisions, people, projects, runbooks,
+conventions — **retrieve first**. Use the ` + "`search-brain`" + ` skill: it reads the
+live vault through Obsidian (an Obsidian MCP if one is connected, else the
+Obsidian CLI) and never guesses from filenames. If neither is available it will
+say so — wire one up and check it with ` + "`teambrain doctor`" + `. Cite the note (and
+heading) behind each claim, and when the vault is silent on something, say so
+plainly rather than inventing it.
+`
+
 const claudeMDPersonal = `# Personal brain
 
 A personal-brain vault managed with teambrain. It is a normal Obsidian vault and
@@ -59,7 +77,7 @@ and ask Claude Code to **promote it to the team**; the seeded ` + "`promote-to-t
 skill walks the flow. Under the hood it runs ` + "`teambrain create-sync` → `view-sync` → `commit-sync`" + `.
 commit-sync refuses links that would dangle in the team vault unless you pass
 ` + "`--force`" + `, and confirms before writing to the shared repo.
-`
+` + claudeMDRetrieval
 
 const claudeMDTeam = `# Team brain
 
@@ -75,7 +93,7 @@ brains via ` + "`teambrain commit-sync`" + `, after a link-integrity check.
 - ` + "`conventions/`" + ` — shared conventions
 - ` + "`mocs/`" + ` — maps of content
 - ` + "`.claude/`" + ` — shared skills, agents, hooks, and commands
-`
+` + claudeMDRetrieval
 
 const gitignorePersonal = `# teambrain promotion staging (transient)
 _sync/

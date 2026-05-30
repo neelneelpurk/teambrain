@@ -8,14 +8,14 @@ description: Review a diff or pull request for correctness, security, and clarit
 Review the change like an owner who will maintain it, not a gate to pass. Be
 concrete and kind. Quote the exact lines.
 
-## Ground it in the brain first (Obsidian CLI)
+## Ground it in the brain first
 
-Before reviewing, find what the vault already mandates. Run `obsidian --help` to
-see the available commands, then use the Obsidian CLI to search the vault for
-relevant conventions, ADRs, and runbooks for this area (naming rules, a security
-ADR, a service runbook) and read the ones that apply. Hold the diff to the
-team's *written* standards instead of inventing them on the spot. (No Obsidian
-CLI? See the `search-brain` skill.)
+Before reviewing, find what the vault already mandates. Use the **search-brain**
+skill to search for the conventions, ADRs, and runbooks that govern this area
+(naming rules, a security ADR, a service runbook) and read the ones that apply.
+Hold the diff to the team's *written* standards instead of inventing them on the
+spot. search-brain owns the retrieval path — it queries the live vault through
+Obsidian (an MCP if connected, else the CLI) and won't guess from filenames.
 
 ## Method
 

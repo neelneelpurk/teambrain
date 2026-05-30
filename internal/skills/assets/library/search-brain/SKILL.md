@@ -8,6 +8,11 @@ description: Find relevant notes in the vault before answering anything that dep
 The vault is the source of truth, and **Obsidian is how you read it**. Retrieve
 before reasoning — don't answer from memory or guess from filenames.
 
+This skill is the **single source of truth for retrieval**: it owns *how* to read
+the vault. The other skills (`code-review`, `debug`, `plan-feature`,
+`promote-to-team`, …) delegate their "find the relevant notes" step here rather
+than each picking a tool, so there is one contract to keep correct.
+
 ## Choose the retrieval tool (required — in priority order)
 
 1. **Obsidian MCP** — if Obsidian MCP tools are connected this session, use them
