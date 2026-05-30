@@ -8,12 +8,13 @@ description: Write focused, fast tests for a unit of code, test-first when possi
 A test exists to catch a regression a human would otherwise ship. Optimize for
 that, not for coverage numbers.
 
-## Match the team's conventions first (Obsidian CLI)
+## Match the team's conventions first
 
-Run `obsidian --help`, then use the Obsidian CLI to search the vault for testing
-conventions and patterns for this area before writing — adopt the house style
-(fixtures, table-driven layout, naming) rather than inventing your own. (No
-Obsidian CLI? See the `search-brain` skill.)
+Use the **search-brain** skill to search the vault for testing conventions and
+patterns for this area before writing — adopt the house style (fixtures,
+table-driven layout, naming) rather than inventing your own. search-brain reads
+the live vault through Obsidian (MCP preferred, else the CLI); don't infer the
+house style from a filename.
 
 ## Method
 

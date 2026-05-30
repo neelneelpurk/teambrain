@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/neelneelpurk/teambrain/internal/manifest"
@@ -103,6 +104,41 @@ func TestTeamVaultCreatesTeamTree(t *testing.T) {
 	}
 	if root.Vault != manifest.RoleTeam {
 		t.Fatalf("team manifest role = %q, want team", root.Vault)
+	}
+}
+
+// TestGeneratedClaudeMDEncodesRetrievalContract pins the ambient instruction
+// that shapes every Claude Code session in a brain: retrieve from the vault via
+// the search-brain skill before answering, rather than guessing. This is the
+// product's central "use the LLM correctly" rule, so it must live in the
+// generated CLAUDE.md and not only in a skill that fires on a trigger.
+func TestGeneratedClaudeMDEncodesRetrievalContract(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		scaffold func(vault.Vault, bool) (*Result, error)
+	}{
+		{"personal", PersonalVault},
+		{"team", TeamVault},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v := newVault(t)
+			if _, err := tc.scaffold(v, false); err != nil {
+				t.Fatalf("scaffold: %v", err)
+			}
+			raw, err := v.Read("CLAUDE.md")
+			if err != nil {
+				t.Fatalf("read CLAUDE.md: %v", err)
+			}
+			body := strings.ToLower(string(raw))
+			for _, want := range []string{"search-brain", "retrieve"} {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s CLAUDE.md should encode the retrieval contract (missing %q)", tc.name, want)
+				}
+			}
+		})
 	}
 }
 
